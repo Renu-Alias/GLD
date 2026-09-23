@@ -98,10 +98,4 @@ MQ-6 units vary — calibrate before deployment:
 **Included:** continuous MQ-6 sensing, GPIO-driven local alarm, SMS alerting, Supabase logging, documented calibration and response-time measurement.
  
 **Not included (future work):** automatic regulator/electricity shutoff, ventilation control, cylinder-weight monitoring, battery backup for mains power cuts, and field validation across multiple real kitchen installations (this cycle is lab/prototype testing only).
- 
-## Team
- 
-Fathima P A, Manya K S, Meenakshi Menon, Renu Alias
-B.Tech Computer Science and Engineering — Semester 5
-Course: Microcontrollers · PBCST504
- 
+
