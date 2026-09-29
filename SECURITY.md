@@ -206,8 +206,8 @@ every byte: 1391 bytes DER, fingerprint identical. Re-verify with:
   today; extending the alert text could break it. A `POST` body would be the
   robust fix.
 - **No compile verification of the firmware itself.** No ESP32/Arduino
-  toolchain (`arduino-cli`, `platformio`, `idf.py`) is installed on the dev
-  machine, so `main.c` has not been through a real compiler. The
+  toolchain (`arduino-cli`, `platformio`) is installed on the dev machine, so
+  `GLD.ino` has not been through a real compiler. The
   `WiFiClientSecure` / `HTTPClient` calls are unverified by a compiler. The
   string and parsing code changed in this work *was* extracted and tested under
   gcc. Install the ESP32 board package to get a genuine build.
