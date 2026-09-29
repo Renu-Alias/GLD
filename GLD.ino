@@ -17,7 +17,15 @@
 #define BUTTON_PIN 27
 
 #define WARNING_THRESHOLD 500
+#define WARNING_CLEAR_THRESHOLD 420
 #define DANGER_THRESHOLD 800
+#define DANGER_CLEAR_THRESHOLD 700
+
+#define SENSOR_WARMUP_MS 20000UL
+#define SAMPLE_INTERVAL_MS 250UL
+#define LOG_INTERVAL_MS 1000UL
+
+#define NORMAL_LOG_INTERVAL_MS 5000UL
 
 #define SMS_HOST "www.fast2sms.com"
 #define SMS_PATH "/dev/bulkV2"
@@ -28,21 +36,42 @@
 #define WIFI_RETRY_INTERVAL_MS 15000UL
 #define IST_OFFSET_SEC 19800
 
+#define DEBOUNCE_MS 50UL
+
+#define BUZZER_WARN_TONE_HZ 1000
+#define BUZZER_DANGER_TONE_HZ 2000
+#define BUZZER_WARN_PERIOD_MS 300UL
+#define BUZZER_DANGER_PERIOD_MS 150UL
+
+enum AlarmState {
+  STATE_SAFE,
+  STATE_WARNING,
+  STATE_DANGER
+};
+
+AlarmState alarmState = STATE_SAFE;
+
 bool alarmMuted = false;
 
 bool lastButtonState = HIGH;
 
 unsigned long lastDebounceTime = 0;
-const unsigned long debounceDelay = 50;
 
 unsigned long lastBuzzerTime = 0;
 bool buzzerState = false;
 
 bool wifiReady = false;
+bool timeSyncStarted = false;
 unsigned long lastWifiRetryTime = 0;
 
 bool smsAttempted = false;
 unsigned long lastSmsAttemptTime = 0;
+
+bool warmupComplete = false;
+unsigned long bootTime = 0;
+
+unsigned long lastSampleTime = 0;
+unsigned long lastLogTime = 0;
 
 bool connectWifi() {
 
@@ -71,10 +100,31 @@ bool connectWifi() {
   return wifiReady;
 }
 
+void startTimeSync() {
+
+  if (timeSyncStarted) {
+    return;
+  }
+
+  timeSyncStarted = true;
+
+  configTime(IST_OFFSET_SEC, 0, "pool.ntp.org", "time.nist.gov");
+
+  Serial.println("[TIME] ntp sync started");
+}
+
 void maintainWifi() {
 
   if (WiFi.status() == WL_CONNECTED) {
+
+    if (!wifiReady) {
+      Serial.println("[WIFI] reconnected");
+    }
+
     wifiReady = true;
+
+    startTimeSync();
+
     return;
   }
 
@@ -160,20 +210,17 @@ String buildNumbersParam() {
 
 int countAlertNumbers() {
 
-  const String raw = ALERT_PHONE_NUMBERS;
+  const String valid = buildNumbersParam();
 
-  int count = 0;
-  size_t start = 0;
+  if (valid.length() == 0) {
+    return 0;
+  }
 
-  for (size_t i = 0; i <= raw.length(); i++) {
+  int count = 1;
 
-    if (i == raw.length() || raw.charAt(i) == ',') {
-
-      if (raw.substring(start, i).trim().length() > 0) {
-        count++;
-      }
-
-      start = i + 1;
+  for (size_t i = 0; i < valid.length(); i++) {
+    if (valid.charAt(i) == ',') {
+      count++;
     }
   }
 
@@ -189,7 +236,7 @@ String buildTimestamp() {
   }
 
   struct tm timeInfo;
-  gmtime_r(&now, &timeInfo);
+  localtime_r(&now, &timeInfo);
 
   char buffer[32];
   strftime(buffer, sizeof(buffer), "%d-%m-%Y %H:%M:%S IST", &timeInfo);
@@ -210,12 +257,12 @@ String buildAlertMessage(int gasValue) {
 
 bool sendAlertSms(int gasValue) {
 
+  lastSmsAttemptTime = millis();
+
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("[SMS] skipped, wifi offline");
     return false;
   }
-
-  lastSmsAttemptTime = millis();
 
   String message = buildAlertMessage(gasValue);
 
@@ -262,7 +309,10 @@ bool sendAlertSms(int gasValue) {
   String compact = response;
   compact.replace(" ", "");
 
-  bool accepted = (statusCode == 200 && compact.indexOf("\"return\":false") < 0);
+  bool accepted =
+      (statusCode == 200) &&
+      (compact.indexOf("\"return\":true") >= 0 ||
+       compact.indexOf("Messagesentsuccessfully") >= 0);
 
   Serial.print("[SMS] ");
   Serial.print(accepted ? "sent" : "failed");
@@ -274,7 +324,85 @@ bool sendAlertSms(int gasValue) {
   return accepted;
 }
 
+bool buttonPressed() {
+
+  bool reading = digitalRead(BUTTON_PIN);
+
+  if (reading != lastButtonState) {
+    lastDebounceTime = millis();
+    lastButtonState = reading;
+  }
+
+  if (millis() - lastDebounceTime < DEBOUNCE_MS) {
+    return false;
+  }
+
+  if (reading == LOW) {
+    lastButtonState = HIGH;
+    return true;
+  }
+
+  return false;
+}
+
+void updateState(int gasValue) {
+
+  if (alarmState == STATE_DANGER) {
+
+    if (gasValue < DANGER_CLEAR_THRESHOLD) {
+      alarmState = STATE_WARNING;
+    }
+
+  } else if (alarmState == STATE_WARNING) {
+
+    if (gasValue >= DANGER_THRESHOLD) {
+      alarmState = STATE_DANGER;
+    } else if (gasValue < WARNING_CLEAR_THRESHOLD) {
+      alarmState = STATE_SAFE;
+    }
+
+  } else {
+
+    if (gasValue >= WARNING_THRESHOLD) {
+      alarmState = STATE_WARNING;
+    }
+  }
+}
+
+void setLed(int r, int g, int b) {
+
+  digitalWrite(RED_PIN, r);
+  digitalWrite(GREEN_PIN, g);
+  digitalWrite(BLUE_PIN, b);
+}
+
+void updateBuzzer(unsigned int frequency, unsigned long period) {
+
+  if (alarmMuted) {
+    noTone(BUZZER_PIN);
+    buzzerState = false;
+    return;
+  }
+
+  unsigned long currentTime = millis();
+
+  if (currentTime - lastBuzzerTime < period) {
+    return;
+  }
+
+  lastBuzzerTime = currentTime;
+
+  buzzerState = !buzzerState;
+
+  if (buzzerState) {
+    tone(BUZZER_PIN, frequency);
+  } else {
+    noTone(BUZZER_PIN);
+  }
+}
+
 void setup() {
+
   Serial.begin(115200);
 
   pinMode(BUZZER_PIN, OUTPUT);
@@ -287,127 +415,100 @@ void setup() {
 
   noTone(BUZZER_PIN);
 
-  Serial.print("[SMS] configured alert numbers: ");
+  Serial.print("[SMS] configured valid alert numbers: ");
   Serial.println(countAlertNumbers());
 
   connectWifi();
 
-  if (wifiReady) {
-    configTime(IST_OFFSET_SEC, 0, "pool.ntp.org", "time.nist.gov");
-  }
+  maintainWifi();
+
+  bootTime = millis();
+
+  Serial.print("[WARMUP] MQ-6 stabilising for ");
+  Serial.print(SENSOR_WARMUP_MS / 1000);
+  Serial.println("s, blue LED indicates calibrating");
 }
 
 void loop() {
 
   maintainWifi();
 
+  unsigned long currentTime = millis();
+
   int gasValue = analogRead(MQ6_PIN);
 
-  Serial.print("Gas Value: ");
-  Serial.println(gasValue);
-
-  // BUTTON
-  bool buttonState = digitalRead(BUTTON_PIN);
-
-  if (buttonState == LOW && lastButtonState == HIGH) {
-
-    delay(50);
-
-    if (digitalRead(BUTTON_PIN) == LOW) {
-
-      if (gasValue >= WARNING_THRESHOLD) {
-        alarmMuted = true;
-        noTone(BUZZER_PIN);
-        buzzerState = false;
-
-        Serial.println("ALARM MUTED");
-      }
-    }
+  if (readButton()) {
+    processButton(gasValue);
   }
 
-  lastButtonState = buttonState;
+  if (!warmupComplete && currentTime - bootTime >= SENSOR_WARMUP_MS) {
+    warmupComplete = true;
+    Serial.println("[WARMUP] complete, gas readings now active");
+  }
 
+  if (!warmupComplete) {
 
-  // NORMAL
-  if (gasValue < WARNING_THRESHOLD) {
+    bool blink = ((currentTime / 400) % 2) == 0;
+    setLed(0, 0, blink ? HIGH : LOW);
+    noTone(BUZZER_PIN);
+    buzzerState = false;
+
+    if (currentTime - lastLogTime >= LOG_INTERVAL_MS) {
+      lastLogTime = currentTime;
+      Serial.print("Gas Value: ");
+      Serial.print(gasValue);
+      Serial.println(" (warming up)");
+    }
+
+    return;
+  }
+
+  updateState(gasValue);
+
+  if (alarmState == STATE_SAFE) {
 
     alarmMuted = false;
 
     smsAttempted = false;
 
-    digitalWrite(RED_PIN, LOW);
-    digitalWrite(GREEN_PIN, HIGH);
-    digitalWrite(BLUE_PIN, LOW);
+    setLed(0, HIGH, 0);
 
     noTone(BUZZER_PIN);
     buzzerState = false;
-  }
 
-
-  // WARNING
-  else if (gasValue >= WARNING_THRESHOLD && gasValue < DANGER_THRESHOLD) {
-
-    digitalWrite(RED_PIN, HIGH);
-    digitalWrite(GREEN_PIN, HIGH);
-    digitalWrite(BLUE_PIN, LOW);
-
-    if (alarmMuted) {
-
-      noTone(BUZZER_PIN);
-      buzzerState = false;
-
-    } else {
-
-      unsigned long currentTime = millis();
-
-      if (currentTime - lastBuzzerTime >= 300) {
-
-        lastBuzzerTime = currentTime;
-
-        buzzerState = !buzzerState;
-
-        if (buzzerState) {
-          tone(BUZZER_PIN, 1000);
-        } else {
-          noTone(BUZZER_PIN);
-        }
-      }
+    if (currentTime - lastLogTime >= NORMAL_LOG_INTERVAL_MS) {
+      lastLogTime = currentTime;
+      Serial.print("Gas Value: ");
+      Serial.println(gasValue);
     }
+
+    return;
   }
 
+  if (alarmState == STATE_WARNING) {
 
-  // DANGER
-  else {
+    setLed(HIGH, HIGH, 0);
 
-    digitalWrite(RED_PIN, HIGH);
-    digitalWrite(GREEN_PIN, LOW);
-    digitalWrite(BLUE_PIN, LOW);
+    updateBuzzer(BUZZER_WARN_TONE_HZ, BUZZER_WARN_PERIOD_MS);
 
-    if (!smsAttempted || millis() - lastSmsAttemptTime >= SMS_RETRY_INTERVAL_MS) {
+  } else {
+
+    setLed(HIGH, 0, 0);
+
+    updateBuzzer(BUZZER_DANGER_TONE_HZ, BUZZER_DANGER_PERIOD_MS);
+
+    if (!smsAttempted || currentTime - lastSmsAttemptTime >= SMS_RETRY_INTERVAL_MS) {
       smsAttempted = true;
+      keepToneRunningDuringSms();
       sendAlertSms(gasValue);
     }
-    if (alarmMuted) {
+  }
 
-      noTone(BUZZER_PIN);
-      buzzerState = false;
-
-    } else {
-
-      unsigned long currentTime = millis();
-
-      if (currentTime - lastBuzzerTime >= 150) {
-
-        lastBuzzerTime = currentTime;
-
-        buzzerState = !buzzerState;
-
-        if (buzzerState) {
-          tone(BUZZER_PIN, 2000);
-        } else {
-          noTone(BUZZER_PIN);
-        }
-      }
-    }
+  if (currentTime - lastLogTime >= LOG_INTERVAL_MS) {
+    lastLogTime = currentTime;
+    Serial.print("Gas Value: ");
+    Serial.print(gasValue);
+    Serial.print(" state: ");
+    Serial.println(alarmState == STATE_WARNING ? "WARNING" : "DANGER");
   }
 }
