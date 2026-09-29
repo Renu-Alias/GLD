@@ -205,16 +205,21 @@ every byte: 1391 bytes DER, fingerprint identical. Re-verify with:
   its internal URL buffer for longer messages. The 160-char trim keeps it safe
   today; extending the alert text could break it. A `POST` body would be the
   robust fix.
-- **No compile verification of the firmware itself.** No ESP32/Arduino
-  toolchain (`arduino-cli`, `platformio`) is installed on the dev machine, so
-  `GLD.ino` has not been through a real compiler. The
-  `WiFiClientSecure` / `HTTPClient` calls are unverified by a compiler. The
-  string and parsing code changed in this work *was* extracted and tested under
-  gcc. Install the ESP32 board package to get a genuine build.
-- **Retry behaviour is unpolished.** When WiFi is down, `sendAlertSms()` returns
-  before setting `lastSmsAttemptTime`, so the `DANGER` branch re-enters every
-  loop iteration and prints a "wifi offline" line each time. The upside is that
-  the alert fires immediately once connectivity returns, which is the correct
-  priority for a gas leak. The cost is serial log noise.
+- **No build for the real target.** No ESP32/Arduino toolchain (`arduino-cli`,
+  `platformio`) is installed on the dev machine, so `GLD.ino` has never been
+  through the Xtensa compiler. It *has* been compiled with g++ against stub
+  Arduino headers, which proves the logic compiles and passes 41 assertions
+  (hysteresis, debounce, retry throttling, response parsing, warm-up gating) but
+  does **not** prove the hardware calls are correct. Install the ESP32 board
+  package and build before trusting it on a real board.
+- **The SMS send is synchronous and blocks the main loop** for the duration of
+  the request (up to `SMS_HTTP_TIMEOUT_MS`, plus DNS and the TLS handshake).
+  The buzzer is deliberately held to a continuous tone across the call so the
+  alarm never goes silent, but the mute button and LED are unresponsive
+  meanwhile. A FreeRTOS task on core 0 would remove this entirely.
+- **Retry backoff is flat.** A gateway that is down is retried every 60 s
+  indefinitely, with no exponential backoff and no give-up. Fine for a home
+  prototype; it would drain a battery-backed deployment.
 - **Supabase logging described in `README.md` is not implemented** in the
-  firmware. The README currently overstates the remote layer.
+  firmware. The README has been corrected to say so explicitly.
+

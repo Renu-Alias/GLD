@@ -73,25 +73,55 @@ MQ-6 is on GPIO33 (ADC1), deliberately — ADC2 pins are unusable while WiFi is 
 
 The firmware (`GLD.ino`, Arduino C++) runs a loop that:
 
-1. **ADC sampling** — reads the MQ-6 analog output on GPIO33 with `analogRead()` (12-bit, 0–1023) at the default 11 dB attenuation, giving roughly the full 0–3.3 V range.
-2. **Threshold logic** — compares the raw reading against `WARNING_THRESHOLD` (500) and `DANGER_THRESHOLD` (800).
-3. **State machine** — three states drive all outputs:
-   - **NORMAL** (`< 500`) — LED green, buzzer off, alarm-unmute, SMS re-armed
-   - **WARNING** (`500–799`) — LED amber (red + green), buzzer beeps at **1000 Hz**, toggling every 300 ms
-   - **DANGER** (`≥ 800`) — LED **solid red**, buzzer beeps at **2000 Hz**, toggling every 150 ms, and one SMS is sent per leak event
-4. **Manual override** — the button mutes the buzzer whenever the reading is at or above `WARNING_THRESHOLD`. Muting does **not** clear the alarm state; the mute is released automatically only once the reading drops back below `WARNING_THRESHOLD`.
-5. **SMS** — one message per leak event, not re-sent every iteration. While the unit stays in DANGER it retries every `SMS_RETRY_INTERVAL_MS` (60 s).
+1. **ADC sampling** — reads the MQ-6 analog output on GPIO33 with `analogRead()`
+   (12-bit, 0–1023) at the default 11 dB attenuation, giving roughly the full
+   0–3.3 V range. Sampling is gated to one read every `SAMPLE_INTERVAL_MS`
+   (250 ms); the rest of the loop runs free so the mute button stays responsive.
+2. **Threshold logic** — the raw reading is compared against the four threshold
+   defines described under *Firmware Logic* below.
+3. **State machine** — three states drive all outputs, latched so the state
+   persists between samples. Transitions use **hysteresis**, so a reading that
+   oscillates around a threshold cannot make the alarm flicker:
+   - **SAFE** — LED green, buzzer off, alarm un-muted, SMS re-armed
+   - **WARNING** — entered at **≥ 500**, left below **420**. LED amber (red +
+     green), buzzer beeps at **1000 Hz**, toggling every 300 ms
+   - **DANGER** — entered at **≥ 800**, left below **700**. LED **solid red**,
+     buzzer beeps at **2000 Hz**, toggling every 150 ms, and one SMS is sent
+     per leak event
 
-### Things the firmware does *not* do
+   The clear thresholds sit 80–100 counts below the trip thresholds, which is
+   the gap that prevents chatter. A jump from SAFE straight to DANGER (e.g. gas
+   arrives while you are looking at the serial monitor) escalates in a single
+   sample rather than passing through WARNING first.
 
-Read this before assuming otherwise — several of these were claimed in earlier drafts:
+4. **Manual override** — the button toggles the buzzer mute whenever the state is
+   not SAFE. Muting does **not** clear the alarm state; the LED keeps showing the
+   real condition, and the mute is released automatically on returning to SAFE.
+5. **SMS** — one message per leak event, not re-sent every iteration. While the
+   unit stays in DANGER it retries every `SMS_RETRY_INTERVAL_MS` (60 s). If the
+   network is down, no request is attempted at all and the "wifi offline" notice
+   is rate-limited to once every 5 s; the moment connectivity returns the alert
+   is sent rather than waiting out the retry window.
+6. **Warm-up** — for the first `SENSOR_WARMUP_MS` (20 s) after boot the firmware
+   **ignores gas readings entirely** and blinks the blue LED to show it is
+   calibrating. This prevents a false alarm from an unstabilised MQ-6. It has
+   no effect on the timer starting from the end of `setup()`.
 
-- **No hysteresis.** There is one rising and one falling threshold and nothing else. The WARNING band is a level range, not a hysteresis pair, so a reading hovering near 500 will move between NORMAL and WARNING repeatedly.
-- **No sensor warm-up delay.** The code does not wait for the MQ-6 to stabilise at boot. Readings in the first ~20 s after power-on are unreliable and can produce false alarms or a false all-clear.
-- **No sampling interval.** The loop contains no `delay()`, so `analogRead()` runs as fast as the loop allows. In practice the per-iteration `Serial.print` throttles it, but the sampling period is not the 300–500 ms previously documented — it is incidental, not controlled.
-- **The red LED does not blink.** DANGER holds red solid. There is no blink pattern and no LED brightness/PWM control.
-- **The blue channel is never lit.** `BLUE_PIN` is configured and driven `LOW` in all three states, but never `HIGH`.
-- **No leak-to-alarm latency measurement**, warm-up indicator, or response-time logging exists in the code.
+### Alarm behaviour under a blocking network call
+
+The SMS request is synchronous and can take several seconds. Immediately before
+the request the firmware re-asserts a continuous tone on the buzzer
+(`holdToneDuringSms()`), so the alarm keeps sounding through the network call
+instead of dropping into the silent half of its beep cycle. The beep cadence
+resumes normally once the request returns.
+
+### Things the firmware still does *not* do
+
+- **The red LED does not blink.** DANGER holds red solid. There is no blink
+  pattern and no LED brightness/PWM control.
+- **No leak-to-alarm latency measurement** or response-time logging exists in
+  the code.
+- **Thresholds are uncalibrated placeholders** (500/800/420/700). See Calibration.
 
 ## Getting Started
 
@@ -128,18 +158,33 @@ Recent iPhones default Personal Hotspot to 5 GHz with WPA3, which most ESP32 boa
 
 MQ-6 units vary — calibrate before deployment:
 
-1. Power on and **wait at least 20 s** for the sensor to warm up (the firmware does not do this for you).
+1. Power on and wait for the blue warm-up blink to stop. The firmware ignores
+   readings for the first 20 s, so the serial log is clean during warm-up.
 2. Monitor the raw ADC value in clean air to establish a baseline.
 3. In a well-ventilated area, briefly expose the sensor to a small LPG source and note the reading.
-4. Adjust `WARNING_THRESHOLD` and `DANGER_THRESHOLD` in `GLD.ino` to suit, then re-test. The defaults (500 / 800) are placeholders, not calibrated values.
+4. Adjust all four thresholds in `GLD.ino` to suit, then re-test:
+
+   | Define | Default | Meaning |
+   |---|---|---|
+   | `WARNING_THRESHOLD` | 500 | enter WARNING at or above this |
+   | `WARNING_CLEAR_THRESHOLD` | 420 | leave WARNING below this |
+   | `DANGER_THRESHOLD` | 800 | enter DANGER at or above this |
+   | `DANGER_CLEAR_THRESHOLD` | 700 | leave DANGER below this |
+
+   Each clear threshold must stay comfortably below its trip threshold (about
+   80–100 counts). If you set them too close, the hysteresis is lost and the
+   alarm will chatter. The defaults are placeholders, not calibrated values.
 
 ## Testing Checklist
 
-- Boot sequence: LED shows green in clean air (note: there is no warm-up indicator)
+- Boot: blue LED blinks for 20 s, then the LED shows green in clean air
 - Green → amber → red transition, buzzer tone change from 1000 Hz to 2000 Hz
-- Exactly one SMS on a brief, ventilated gas exposure, with a plausible gas level and timestamp
-- Pressing the button mutes the buzzer during an active alarm without clearing the LED state
-- Buzzer resumes after a re-press is not required — it returns on its own once the reading drops below `WARNING_THRESHOLD`
+- Exactly one SMS on a brief, ventilated gas exposure, with a plausible gas level
+- **SMS timestamp matches your wall clock** — this catches timezone bugs, which
+  are easy to reintroduce
+- Pressing the button mutes the buzzer during an active alarm without clearing
+  the LED state; pressing again unmutes
+- Buzzer returns on its own once the reading drops below `WARNING_CLEAR_THRESHOLD`
 - Green state and SMS re-arm after the gas clears
 
 ## Known gaps
@@ -148,14 +193,13 @@ Honest list of what is missing or weak, so it is not mistaken for working:
 
 | Gap | Impact |
 |---|---|
-| No warm-up delay at boot | False alarms or a false all-clear in the first ~20 s |
-| No hysteresis | LED chatters near a threshold; repeated SMS re-arms on threshold oscillation |
-| No sampling `delay()` | Uncontrolled sample rate, and continuous serial output that throttles the loop |
-| Blue channel never driven `HIGH` | GPIO4 is dead weight |
-| `lastDebounceTime` / `debounceDelay` declared but unused | Dead code; debounce is a hardcoded 50 ms block |
-| Red LED never blinks | No visual urgency escalation, contrary to earlier docs |
-| `setInsecure()` replaced with a pinned root | Done — see `SECURITY.md` §3 |
-| Supabase logging / dashboard | **Not implemented at all** |
+| Supabase logging / dashboard | **Not implemented at all**, despite earlier docs |
+| Red LED never blinks | No visual urgency escalation in DANGER |
+| Thresholds uncalibrated | Defaults are placeholders; see Calibration |
+| SMS send is synchronous | Blocks the loop for up to ~5 s; mitigated by holding a continuous tone, but the button and LED freeze for that duration |
+| Thresholds are absolute ADC counts | No compensation for sensor drift or ambient temperature |
+| Single shared MQTT-free retry | A permanently failing gateway is retried every 60 s forever, with no backoff or give-up |
+| Green LED on GPIO2 | Strapping pin; see the caution in the pin map |
 | Calibrated threshold values | Defaults are placeholders |
 
 ## Project Scope
