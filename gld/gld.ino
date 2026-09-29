@@ -5,6 +5,7 @@
 #include <time.h>
 
 #include "secrets.h"
+#include "certs.h"
 
 #define MQ6_PIN 33
 #define BUZZER_PIN 25
@@ -116,6 +117,69 @@ String urlEncode(const String &text) {
   return encoded;
 }
 
+String buildNumbersParam() {
+
+  const String raw = ALERT_PHONE_NUMBERS;
+
+  String result = "";
+
+  size_t start = 0;
+
+  for (size_t i = 0; i <= raw.length(); i++) {
+
+    if (i != raw.length() && raw.charAt(i) != ',') {
+      continue;
+    }
+
+    String number = raw.substring(start, i);
+    number.trim();
+    number.replace(" ", "");
+
+    if (number.length() > 0) {
+
+      if (number.length() != 10) {
+
+        Serial.print("[SMS] skipping malformed number: ");
+        Serial.println(number);
+
+      } else {
+
+        if (result.length() > 0) {
+          result += ",";
+        }
+
+        result += urlEncode(number);
+      }
+    }
+
+    start = i + 1;
+  }
+
+  return result;
+}
+
+int countAlertNumbers() {
+
+  const String raw = ALERT_PHONE_NUMBERS;
+
+  int count = 0;
+  size_t start = 0;
+
+  for (size_t i = 0; i <= raw.length(); i++) {
+
+    if (i == raw.length() || raw.charAt(i) == ',') {
+
+      if (raw.substring(start, i).trim().length() > 0) {
+        count++;
+      }
+
+      start = i + 1;
+    }
+  }
+
+  return count;
+}
+
 String buildTimestamp() {
 
   time_t now = time(nullptr);
@@ -160,16 +224,23 @@ bool sendAlertSms(int gasValue) {
     message = message.substring(0, 157) + "...";
   }
 
+  String numbers = buildNumbersParam();
+
+  if (numbers.length() == 0) {
+    Serial.println("[SMS] no valid numbers configured, aborting");
+    return false;
+  }
+
   String uri = String(SMS_PATH);
   uri += "?route=";
   uri += SMS_ROUTE;
   uri += "&message=";
   uri += urlEncode(message);
   uri += "&numbers=";
-  uri += urlEncode(String(ALERT_PHONE_NUMBERS));
+  uri += numbers;
 
   WiFiClientSecure client;
-  client.setInsecure();
+  client.setCACert(ROOT_CA_ISRG_X1);
 
   HTTPClient http;
   http.setTimeout(SMS_HTTP_TIMEOUT_MS);
@@ -215,6 +286,9 @@ void setup() {
   pinMode(BUTTON_PIN, INPUT_PULLUP);
 
   noTone(BUZZER_PIN);
+
+  Serial.print("[SMS] configured alert numbers: ");
+  Serial.println(countAlertNumbers());
 
   connectWifi();
 
