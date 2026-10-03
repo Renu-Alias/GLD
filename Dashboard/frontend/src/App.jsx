@@ -214,7 +214,7 @@ export default function App() {
   const criticalCount = incidents.filter(i => i.severity === 'critical').length;
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-slate-50">
+    <div className="flex flex-col h-screen overflow-hidden bg-slate-100">
       {/* ── Top header bar ─────────────────────────────── */}
       <Header isOnline={isOnline} />
 

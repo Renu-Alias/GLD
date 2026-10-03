@@ -4,6 +4,13 @@ export default {
     "./index.html",
     "./src/**/*.{js,jsx,ts,tsx}",
   ],
+  safelist: [
+    'border-t-red-400',
+    'border-t-amber-400',
+    'border-t-emerald-400',
+    'border-t-indigo-400',
+    'border-t-slate-300',
+  ],
   theme: {
     extend: {
       fontFamily: {
