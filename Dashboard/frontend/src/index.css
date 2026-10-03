@@ -2,51 +2,77 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Brand colour tokens ─────────────────────────────────── */
+:root {
+  --c-navy:        #172033;   /* logo bg, title, primary text */
+  --c-muted:       #7A8699;   /* subtitles, secondary labels  */
+  --c-bg:          #F4F6F8;   /* page background              */
+  --c-border:      #DCE2E8;   /* card borders, dividers       */
+  --c-accent:      #159A8C;   /* gas level card border accent */
+
+  /* Status colours */
+  --c-safe:        #16A37A;
+  --c-safe-bg:     #EAF8F3;
+  --c-safe-border: #B5E5D5;
+
+  --c-warn:        #D99A24;
+  --c-warn-bg:     #FFF7E6;
+  --c-warn-border: #F0D090;
+
+  --c-crit:        #D64550;
+  --c-crit-bg:     #FDECEE;
+  --c-crit-border: #F0B8BC;
+
+  /* Chart colours */
+  --c-line:        #2878A8;
+  --c-grid:        #E5E9EE;
+}
+
 /* ── Base ────────────────────────────────────────────────── */
 @layer base {
   html, body {
-    @apply font-sans bg-slate-100 text-slate-900;
+    @apply font-sans;
+    background-color: var(--c-bg);
+    color: var(--c-navy);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
 
   /* Slim scrollbar */
   ::-webkit-scrollbar        { width: 4px; height: 4px; }
-  ::-webkit-scrollbar-track  { @apply bg-slate-100; border-radius: 9999px; }
-  ::-webkit-scrollbar-thumb  { @apply bg-slate-300; border-radius: 9999px; }
-  ::-webkit-scrollbar-thumb:hover { @apply bg-slate-400; }
+  ::-webkit-scrollbar-track  { background: var(--c-bg); border-radius: 9999px; }
+  ::-webkit-scrollbar-thumb  { background: var(--c-border); border-radius: 9999px; }
+  ::-webkit-scrollbar-thumb:hover { background: #B0BAC6; }
 }
 
-/* ── Component Utilities ─────────────────────────────────── */
+/* ── Component utilities ─────────────────────────────────── */
 @layer components {
-  /* Light card — white surface on slate-100 background */
   .card {
-    @apply bg-white border border-slate-200 rounded-xl shadow-sm;
+    @apply bg-white rounded-xl shadow-sm;
+    border: 1px solid var(--c-border);
   }
 
-  /* Dividers */
-  .divider-v { @apply w-px bg-slate-200 self-stretch; }
-  .divider-h { @apply h-px bg-slate-200 w-full; }
+  .divider-h { height: 1px; background: var(--c-border); width: 100%; }
+  .divider-v { width:  1px; background: var(--c-border); align-self: stretch; }
 
-  /* KPI section label */
   .kpi-label {
-    @apply text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400;
+    @apply text-[10px] font-bold uppercase tracking-[0.15em];
+    color: var(--c-muted);
   }
 
-  /* ── LED glow animations ─────────────────────────────── */
-  /* The LED housing is intentionally dark (hardware representation) */
+  /* LED orbs — glow colours match the status palette */
   .led-green {
-    background-color: #10b981;
+    background-color: var(--c-safe);
     border-radius: 9999px;
     animation: ledGreen 2s ease-in-out infinite alternate;
   }
   .led-amber {
-    background-color: #f59e0b;
+    background-color: var(--c-warn);
     border-radius: 9999px;
     animation: ledAmber 2s ease-in-out infinite alternate;
   }
   .led-red {
-    background-color: #f43f5e;
+    background-color: var(--c-crit);
     border-radius: 9999px;
     animation: ledRed 1s ease-in-out infinite alternate;
   }
@@ -54,14 +80,14 @@
 
 /* ── Keyframes ───────────────────────────────────────────── */
 @keyframes ledGreen {
-  0%   { box-shadow: 0 0 4px 2px rgba(16,185,129,0.35); }
-  100% { box-shadow: 0 0 16px 6px rgba(16,185,129,0.75); }
+  0%   { box-shadow: 0 0 4px 2px rgba(22,163,122,0.35); }
+  100% { box-shadow: 0 0 16px 6px rgba(22,163,122,0.75); }
 }
 @keyframes ledAmber {
-  0%   { box-shadow: 0 0 4px 2px rgba(245,158,11,0.35); }
-  100% { box-shadow: 0 0 16px 6px rgba(245,158,11,0.75); }
+  0%   { box-shadow: 0 0 4px 2px rgba(217,154,36,0.35); }
+  100% { box-shadow: 0 0 16px 6px rgba(217,154,36,0.75); }
 }
 @keyframes ledRed {
-  0%   { box-shadow: 0 0 6px 2px rgba(244,63,94,0.45); }
-  100% { box-shadow: 0 0 22px 8px rgba(244,63,94,0.90); }
+  0%   { box-shadow: 0 0 6px 2px rgba(214,69,80,0.45); }
+  100% { box-shadow: 0 0 22px 8px rgba(214,69,80,0.90); }
 }
