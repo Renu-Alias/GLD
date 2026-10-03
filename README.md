@@ -13,7 +13,7 @@ The local alarm path is entirely GPIO-driven and has **no dependency on WiFi** �
 - Continuous LPG concentration sensing with the MQ-6 gas sensor
 - Local audible alarm (buzzer, two distinct tones) and visual alarm (RGB LED), both WiFi-independent
 - Manual-override button to mute the buzzer during an alarm
-- SMS alert to registered mobile numbers with gas level and timestamp
+- SMS alert to an OTP-linked mobile number, carrying the alarm severity
 - TLS-pinned HTTPS to the SMS gateway, with the API key verified as a real `Authorization` header
 
 > **Not implemented:** Supabase cloud logging, a real-time sync dashboard, and sensor/alert history storage are described in earlier drafts of this document but **do not exist in the firmware**. There is no code for them. See *Known gaps* below.
@@ -25,7 +25,7 @@ The system is organized into four layers:
 1. **Sensing Layer** — MQ-6 gas sensor (via a 10 kΩ load resistor) continuously samples air near the cylinder/stove; a push button provides a second local input.
 2. **Control / Processing Layer** — ESP32 runs the embedded-C firmware: ADC sampling → threshold comparison → GPIO control → WiFi. Powered through a regulated 9 V/USB supply with a stabilizing capacitor on the rail.
 3. **Local Output Layer** (WiFi-independent) — buzzer and RGB LED driven directly by GPIO, so the physical alarm fires regardless of network state.
-4. **Remote Layer** (over WiFi) — SMS via the Fast2SMS gateway.
+4. **Remote Layer** (over WiFi) — SMS via the CircuitDigest Cloud gateway.
 
 Detection → local alarm (layers 1–3) forms a closed loop that never touches the network; the remote layer is an add-on, not a dependency.
 
@@ -97,11 +97,15 @@ The firmware (`GLD.ino`, Arduino C++) runs a loop that:
 4. **Manual override** — the button toggles the buzzer mute whenever the state is
    not SAFE. Muting does **not** clear the alarm state; the LED keeps showing the
    real condition, and the mute is released automatically on returning to SAFE.
-5. **SMS** — one message per leak event, not re-sent every iteration. While the
-   unit stays in DANGER it retries every `SMS_RETRY_INTERVAL_MS` (60 s). If the
-   network is down, no request is attempted at all and the "wifi offline" notice
-   is rate-limited to once every 5 s; the moment connectivity returns the alert
-   is sent rather than waiting out the retry window.
+5. **SMS** — at most `SMS_MAX_ATTEMPTS_PER_EVENT` (3) messages per leak event,
+   not one per iteration. The first fires immediately; further attempts are spaced
+   `SMS_RETRY_INTERVAL_MS` (15 min) apart. The cap exists because the gateway
+   allows only **15 SMS/day** — an uncapped 60 s retry loop exhausts the day's
+   quota in about a quarter of an hour, and remote alerting then dies silently
+   until midnight. The counter re-arms only when the state returns to SAFE. If the
+   network is down no attempt is consumed at all, and the "wifi offline" notice is
+   rate-limited to once every 5 s, so the alert goes out as soon as connectivity
+   returns rather than waiting out the retry window.
 6. **Warm-up** — for the first `SENSOR_WARMUP_MS` (20 s) after boot the firmware
    **ignores gas readings entirely** and blinks the blue LED to show it is
    calibrating. This prevents a false alarm from an unstabilised MQ-6. It has
@@ -128,20 +132,34 @@ resumes normally once the request returns.
 1. Wire the hardware per the pin map above.
 2. Install **Arduino IDE 2.x**.
 3. Add the ESP32 board support: *Tools → Board → Boards Manager*, search for **esp32**, install **“esp32 by Espressif Systems”** (v3.x).
-4. Create your local credentials file by copying `secrets.h.example` to `secrets.h` and filling it in:
+4. Create a free account at **circuitdigest.cloud**, then:
+   - **Account → API Key** — generate a key (format `cd_…`, 100 SMS/month)
+   - **SMS → Link Phone Number** — add your number and verify it by OTP. The API
+     **only sends to numbers linked this way**; an unlinked recipient is rejected.
+   - **SMS → Templates** — note the ID of a template. **108** is the match for
+     this project: *"The {#var#} is currently {#var#}. Please ensure safety."*
+   - Use **Run Test** on the `/sms` page to confirm the whole chain works before
+     flashing anything. It costs one of your 15 daily messages.
+5. Create your local credentials file by copying `secrets.h.example` to `secrets.h` and filling it in:
    ```powershell
    Copy-Item secrets.h.example secrets.h
    notepad secrets.h
    ```
    `secrets.h` is git-ignored and must not be committed. It needs:
    - `WIFI_SSID` / `WIFI_PASSWORD` — the network the ESP32 joins
-   - `FAST2SMS_API_KEY` — from the Fast2SMS developer dashboard
-   - `ALERT_PHONE_NUMBERS` — comma-separated 10-digit Indian mobiles, **no `+91`**, no spaces
-5. Open the sketch: *File → Open…* and select **`GLD.ino`**.
+   - `CD_API_KEY` — the `cd_…` key from the dashboard
+   - `CD_TEMPLATE_ID` — the template ID you chose (`108`)
+   - `CD_MOBILE` — `91` followed by the 10-digit linked number, **no `+`**, no spaces
+6. Open the sketch: *File → Open…* and select **`GLD.ino`**.
 
    > The sketch folder name and the `.ino` file name must match, so the folder must be `GLD` and the file `GLD.ino`. If you rename one, rename the other. This is a hard requirement of the Arduino build system, not a convention.
 
-6. Select *Tools → Board → ESP32 Arduino → ESP32 Dev Module*, pick the correct COM port, then compile and upload.
+7. Select *Tools → Board → ESP32 Arduino → ESP32 Dev Module*, pick the correct COM port, then compile and upload.
+
+   > On an **ESP32-S3 or ESP32-C3** board that exposes only the native USB port
+   > (no USB-UART bridge), also set **Tools → USB CDC On Boot → Enabled**, or
+   > `Serial` writes to UART0 pins that go nowhere and the serial monitor stays
+   > blank. The option is baked in at upload time, so re-flash after changing it.
 
    Alternatively, with [arduino-cli](https://arduino.github.io/arduino-cli/latest/getting-started/):
    ```powershell
@@ -179,9 +197,11 @@ MQ-6 units vary — calibrate before deployment:
 
 - Boot: blue LED blinks for 20 s, then the LED shows green in clean air
 - Green → amber → red transition, buzzer tone change from 1000 Hz to 2000 Hz
-- Exactly one SMS on a brief, ventilated gas exposure, with a plausible gas level
-- **SMS timestamp matches your wall clock** — this catches timezone bugs, which
-  are easy to reintroduce
+- Exactly one SMS on a brief, ventilated gas exposure, reading
+  *"The LPG gas level is currently DANGER. Please ensure safety."*
+- **The SMS carries no timestamp.** Template variables are capped at 30 characters
+  and reject special characters, so there is nowhere to put a clock time. Correlate
+  against the serial log instead — this is a gateway limitation, not a bug.
 - Pressing the button mutes the buzzer during an active alarm without clearing
   the LED state; pressing again unmutes
 - Buzzer returns on its own once the reading drops below `WARNING_CLEAR_THRESHOLD`
@@ -198,7 +218,10 @@ Honest list of what is missing or weak, so it is not mistaken for working:
 | Thresholds uncalibrated | Defaults are placeholders; see Calibration |
 | SMS send is synchronous | Blocks the loop for up to ~5 s; mitigated by holding a continuous tone, but the button and LED freeze for that duration |
 | Thresholds are absolute ADC counts | No compensation for sensor drift or ambient temperature |
-| Single shared MQTT-free retry | A permanently failing gateway is retried every 60 s forever, with no backoff or give-up |
+| SMS quota is 15/day | Five sustained leak events exhaust the daily allowance. The board cannot see the counter, so exhaustion fails silently |
+| SMS retry is flat and capped at 3 | A gateway outage burns 3 messages per event then stops trying; no exponential backoff, no give-up signal |
+| No timestamp in the SMS | Template variables cannot carry one; correlate against the serial log |
+| Recipients must be OTP-linked | Only numbers pre-registered to the cloud account can be alerted — by design, but it means you cannot text a neighbour who isn't linked |
 | Green LED on GPIO2 | Strapping pin; see the caution in the pin map |
 | Calibrated threshold values | Defaults are placeholders |
 
@@ -210,4 +233,4 @@ Honest list of what is missing or weak, so it is not mistaken for working:
 
 ## Security
 
-Credential handling, the recipient-list encoding bug, and the TLS root pinning are documented in [SECURITY.md](SECURITY.md).
+Credential handling, the TLS root pinning, and the gateway's template/variable constraints are documented in [SECURITY.md](SECURITY.md).

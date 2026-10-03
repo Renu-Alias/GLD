@@ -2,7 +2,6 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
-#include <time.h>
 
 #include "secrets.h"
 #include "certs.h"
@@ -23,18 +22,17 @@
 
 #define SENSOR_WARMUP_MS 20000UL
 #define SAMPLE_INTERVAL_MS 250UL
-#define LOG_INTERVAL_MS 1000UL
-#define SAFE_LOG_INTERVAL_MS 5000UL
+#define LOG_INTERVAL_MS 2500UL
+#define SAFE_LOG_INTERVAL_MS 10000UL
 
-#define SMS_HOST "www.fast2sms.com"
-#define SMS_PATH "/dev/bulkV2"
-#define SMS_ROUTE "q"
+#define SMS_HOST "www.circuitdigest.cloud"
+#define SMS_PATH "/api/v1/send_sms"
 #define SMS_HTTP_TIMEOUT_MS 5000
-#define SMS_RETRY_INTERVAL_MS 60000UL
+#define SMS_RETRY_INTERVAL_MS 900000UL
+#define SMS_MAX_ATTEMPTS_PER_EVENT 3
 #define SMS_OFFLINE_LOG_MS 5000UL
 #define WIFI_CONNECT_TIMEOUT_MS 20000UL
 #define WIFI_RETRY_INTERVAL_MS 15000UL
-#define IST_OFFSET_SEC 19800
 
 #define DEBOUNCE_MS 50UL
 
@@ -61,10 +59,9 @@ unsigned long lastBuzzerTime = 0;
 bool buzzerState = false;
 
 bool wifiReady = false;
-bool timeSyncStarted = false;
 unsigned long lastWifiRetryTime = 0;
 
-bool smsAttempted = false;
+int smsAttemptsThisEvent = 0;
 unsigned long lastSmsAttemptTime = 0;
 unsigned long lastSmsOfflineLogTime = 0;
 
@@ -101,19 +98,6 @@ bool connectWifi() {
   return wifiReady;
 }
 
-void startTimeSync() {
-
-  if (timeSyncStarted) {
-    return;
-  }
-
-  timeSyncStarted = true;
-
-  configTime(IST_OFFSET_SEC, 0, "pool.ntp.org", "time.nist.gov");
-
-  Serial.println("[TIME] ntp sync started");
-}
-
 void maintainWifi() {
 
   if (WiFi.status() == WL_CONNECTED) {
@@ -123,8 +107,6 @@ void maintainWifi() {
     }
 
     wifiReady = true;
-
-    startTimeSync();
 
     return;
   }
@@ -144,119 +126,21 @@ void maintainWifi() {
   WiFi.reconnect();
 }
 
-String urlEncode(const String &text) {
+const char *alertStateLabel(AlarmState state) {
 
-  String encoded = "";
-
-  for (size_t i = 0; i < text.length(); i++) {
-
-    char c = text.charAt(i);
-
-    bool unreserved =
-        (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
-        (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '~';
-
-    if (unreserved) {
-      encoded += c;
-    } else {
-      char escape[4];
-      snprintf(escape, sizeof(escape), "%%%02X", (unsigned char)c);
-      encoded += escape;
-    }
-  }
-
-  return encoded;
+  return (state == STATE_DANGER) ? "DANGER" : "WARNING";
 }
 
-String buildNumbersParam() {
+String buildSmsPayload(AlarmState state) {
 
-  const String raw = ALERT_PHONE_NUMBERS;
+  String payload = "{\"mobiles\":\"" + String(CD_MOBILE) + "\"";
+  payload += ",\"var1\":\"LPG gas level\"";
+  payload += ",\"var2\":\"" + String(alertStateLabel(state)) + "\"}";
 
-  String result = "";
-
-  size_t start = 0;
-
-  for (size_t i = 0; i <= raw.length(); i++) {
-
-    if (i != raw.length() && raw.charAt(i) != ',') {
-      continue;
-    }
-
-    String number = raw.substring(start, i);
-    number.trim();
-    number.replace(" ", "");
-
-    if (number.length() > 0) {
-
-      if (number.length() != 10) {
-
-        Serial.print("[SMS] skipping malformed number: ");
-        Serial.println(number);
-
-      } else {
-
-        if (result.length() > 0) {
-          result += ",";
-        }
-
-        result += urlEncode(number);
-      }
-    }
-
-    start = i + 1;
-  }
-
-  return result;
+  return payload;
 }
 
-int countAlertNumbers() {
-
-  const String valid = buildNumbersParam();
-
-  if (valid.length() == 0) {
-    return 0;
-  }
-
-  int count = 1;
-
-  for (size_t i = 0; i < valid.length(); i++) {
-    if (valid.charAt(i) == ',') {
-      count++;
-    }
-  }
-
-  return count;
-}
-
-String buildTimestamp() {
-
-  time_t now = time(nullptr);
-
-  if (now < 1700000000) {
-    return String("time-unavailable");
-  }
-
-  struct tm timeInfo;
-  localtime_r(&now, &timeInfo);
-
-  char buffer[32];
-  strftime(buffer, sizeof(buffer), "%d-%m-%Y %H:%M:%S IST", &timeInfo);
-
-  return String(buffer);
-}
-
-String buildAlertMessage(int gasValue) {
-
-  String message = "LPG LEAK ALERT: gas level ";
-  message += gasValue;
-  message += "/1023 at ";
-  message += buildTimestamp();
-  message += ". Check kitchen now.";
-
-  return message;
-}
-
-bool sendAlertSms(int gasValue) {
+bool sendAlertSms(int gasValue, AlarmState state) {
 
   if (WiFi.status() != WL_CONNECTED) {
 
@@ -272,30 +156,12 @@ bool sendAlertSms(int gasValue) {
 
   lastSmsAttemptTime = millis();
 
-  String message = buildAlertMessage(gasValue);
-
-  if (message.length() > 160) {
-    Serial.println("[SMS] message too long, trimming");
-    message = message.substring(0, 157) + "...";
-  }
-
-  String numbers = buildNumbersParam();
-
-  if (numbers.length() == 0) {
-    Serial.println("[SMS] no valid numbers configured, aborting");
-    return false;
-  }
-
   String uri = String(SMS_PATH);
-  uri += "?route=";
-  uri += SMS_ROUTE;
-  uri += "&message=";
-  uri += urlEncode(message);
-  uri += "&numbers=";
-  uri += numbers;
+  uri += "?ID=";
+  uri += CD_TEMPLATE_ID;
 
   WiFiClientSecure client;
-  client.setCACert(ROOT_CA_ISRG_X1);
+  client.setCACert(SMS_ROOT_CA_BUNDLE);
 
   HTTPClient http;
   http.setTimeout(SMS_HTTP_TIMEOUT_MS);
@@ -305,10 +171,11 @@ bool sendAlertSms(int gasValue) {
     return false;
   }
 
-  http.addHeader("Authorization", FAST2SMS_API_KEY);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("Authorization", CD_API_KEY);
   http.addHeader("Accept", "application/json");
 
-  int statusCode = http.GET();
+  int statusCode = http.POST(buildSmsPayload(state));
 
   String response = http.getString();
 
@@ -319,11 +186,12 @@ bool sendAlertSms(int gasValue) {
 
   bool accepted =
       (statusCode == 200) &&
-      (compact.indexOf("\"return\":true") >= 0 ||
-       compact.indexOf("Messagesentsuccessfully") >= 0);
+      (compact.indexOf("\"status\":\"success\"") >= 0);
 
   Serial.print("[SMS] ");
   Serial.print(accepted ? "sent" : "failed");
+  Serial.print(", gas: ");
+  Serial.print(gasValue);
   Serial.print(", http status: ");
   Serial.print(statusCode);
   Serial.print(", body: ");
@@ -439,12 +307,16 @@ void holdToneDuringSms() {
 
 bool smsDue(unsigned long currentTime) {
 
-  if (!smsAttempted) {
-    return true;
+  if (smsAttemptsThisEvent >= SMS_MAX_ATTEMPTS_PER_EVENT) {
+    return false;
   }
 
   if (WiFi.status() != WL_CONNECTED) {
     return false;
+  }
+
+  if (smsAttemptsThisEvent == 0) {
+    return true;
   }
 
   return (currentTime - lastSmsAttemptTime) >= SMS_RETRY_INTERVAL_MS;
@@ -477,8 +349,10 @@ void setup() {
 
   noTone(BUZZER_PIN);
 
-  Serial.print("[SMS] configured valid alert numbers: ");
-  Serial.println(countAlertNumbers());
+  Serial.print("[SMS] template: ");
+  Serial.print(CD_TEMPLATE_ID);
+  Serial.print(", recipient: ");
+  Serial.println(CD_MOBILE);
 
   connectWifi();
 
@@ -551,7 +425,7 @@ void loop() {
 
     alarmMuted = false;
 
-    smsAttempted = false;
+    smsAttemptsThisEvent = 0;
 
     setLed(0, HIGH, 0);
 
@@ -580,13 +454,11 @@ void loop() {
 
     if (smsDue(currentTime)) {
 
-      if (WiFi.status() == WL_CONNECTED) {
-        smsAttempted = true;
-      }
+      smsAttemptsThisEvent++;
 
       holdToneDuringSms();
 
-      sendAlertSms(gasValue);
+      sendAlertSms(gasValue, STATE_DANGER);
     }
   }
 
