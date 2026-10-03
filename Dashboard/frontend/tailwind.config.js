@@ -5,11 +5,13 @@ export default {
     "./src/**/*.{js,jsx,ts,tsx}",
   ],
   safelist: [
-    'border-t-red-400',
-    'border-t-amber-400',
-    'border-t-emerald-400',
-    'border-t-indigo-400',
-    'border-t-slate-300',
+    // Severity row backgrounds (dynamically composed in IncidentHistory)
+    'bg-rose-500/10', 'bg-amber-500/10', 'bg-emerald-500/5',
+    // Severity border accents
+    'border-l-rose-500', 'border-l-amber-500', 'border-l-emerald-500/40',
+    // KPI top-border accents (dynamically composed in StatusBanner)
+    'border-t-rose-500', 'border-t-amber-500', 'border-t-emerald-500',
+    'border-t-indigo-500', 'border-t-slate-300',
   ],
   theme: {
     extend: {
@@ -18,23 +20,22 @@ export default {
         mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
       },
       animation: {
-        'pulse-slow': 'pulse 2.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-        'glow-green': 'glowGreen 2s ease-in-out infinite alternate',
-        'glow-amber': 'glowAmber 2s ease-in-out infinite alternate',
-        'glow-red':   'glowRed 1.2s ease-in-out infinite alternate',
+        'led-green': 'ledGreen 2s ease-in-out infinite alternate',
+        'led-amber': 'ledAmber 2s ease-in-out infinite alternate',
+        'led-red':   'ledRed 1s ease-in-out infinite alternate',
       },
       keyframes: {
-        glowGreen: {
-          '0%':   { boxShadow: '0 0 4px 1px rgba(34,197,94,0.4)' },
-          '100%': { boxShadow: '0 0 12px 4px rgba(34,197,94,0.7)' },
+        ledGreen: {
+          '0%':   { boxShadow: '0 0 4px 2px rgba(16,185,129,0.35)' },
+          '100%': { boxShadow: '0 0 16px 6px rgba(16,185,129,0.75)' },
         },
-        glowAmber: {
-          '0%':   { boxShadow: '0 0 4px 1px rgba(245,158,11,0.4)' },
-          '100%': { boxShadow: '0 0 12px 4px rgba(245,158,11,0.7)' },
+        ledAmber: {
+          '0%':   { boxShadow: '0 0 4px 2px rgba(245,158,11,0.35)' },
+          '100%': { boxShadow: '0 0 16px 6px rgba(245,158,11,0.75)' },
         },
-        glowRed: {
-          '0%':   { boxShadow: '0 0 6px 2px rgba(239,68,68,0.5)' },
-          '100%': { boxShadow: '0 0 18px 6px rgba(239,68,68,0.85)' },
+        ledRed: {
+          '0%':   { boxShadow: '0 0 6px 2px rgba(244,63,94,0.45)' },
+          '100%': { boxShadow: '0 0 22px 8px rgba(244,63,94,0.90)' },
         },
       },
     },

@@ -6,67 +6,87 @@ import IncidentHistory from './components/IncidentHistory';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const SAMPLE_INTERVAL_MS = 2000;  // New sensor reading every 2 s
-const MAX_CHART_POINTS   = 40;    // Rolling window for trend chart
+const SAMPLE_INTERVAL_MS = 2000;
+const MAX_CHART_POINTS   = 40;
 
-// ── IST formatting helper ────────────────────────────────────────────────────
+// ── IST helper ───────────────────────────────────────────────────────────────
 
 function toIST(date) {
   return date.toLocaleTimeString('en-IN', {
     timeZone: 'Asia/Kolkata',
-    hour:     '2-digit',
-    minute:   '2-digit',
-    second:   '2-digit',
-    hour12:   false,
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
   });
 }
 
 // ── Scenario phases ──────────────────────────────────────────────────────────
-// The simulation cycles Normal → Warning → Critical → Normal so every severity
-// state is demonstrated within the first ~2 minutes.
-
+// Expanded to produce 10+ distinct incident events in the seed history.
+// Each contiguous block of non-normal phases separated by a normal block
+// becomes one incident entry.
 const SCENARIO_PHASES = [
-  { mean: 320, std: 40, duration: 10 },
-  { mean: 420, std: 50, duration: 8  },
-  { mean: 620, std: 60, duration: 10 },
-  { mean: 920, std: 80, duration: 10 },
-  { mean: 700, std: 55, duration: 8  },
-  { mean: 380, std: 45, duration: 8  },
+  // Session starts in normal
+  { mean: 310, std: 35, duration: 6  },
+  // Incident 1: warning spike
+  { mean: 640, std: 55, duration: 7  },
+  { mean: 380, std: 40, duration: 5  },
+  // Incident 2: critical spike
+  { mean: 890, std: 75, duration: 8  },
+  { mean: 350, std: 35, duration: 4  },
+  // Incident 3: warning
+  { mean: 590, std: 50, duration: 6  },
+  { mean: 300, std: 30, duration: 4  },
+  // Incident 4: critical
+  { mean: 950, std: 80, duration: 9  },
+  { mean: 370, std: 40, duration: 5  },
+  // Incident 5: warning
+  { mean: 710, std: 60, duration: 6  },
+  { mean: 330, std: 35, duration: 4  },
+  // Incident 6: warning short
+  { mean: 530, std: 45, duration: 5  },
+  { mean: 290, std: 30, duration: 4  },
+  // Incident 7: critical
+  { mean: 870, std: 70, duration: 7  },
+  { mean: 360, std: 35, duration: 4  },
+  // Incident 8: warning
+  { mean: 660, std: 55, duration: 6  },
+  { mean: 320, std: 30, duration: 4  },
+  // Incident 9: critical
+  { mean: 920, std: 80, duration: 8  },
+  { mean: 340, std: 35, duration: 4  },
+  // Incident 10: warning (last seed block — stays active)
+  { mean: 680, std: 55, duration: 5  },
+  // Live phases continue cycling from here
+  { mean: 380, std: 45, duration: 6  },
 ];
 
-// ── Pure utility functions ───────────────────────────────────────────────────
+// ── Utilities ────────────────────────────────────────────────────────────────
 
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
 function gaussianRandom(mean, std) {
-  // Box-Muller transform — never returns 0 thanks to (1 - Math.random())
   const u1 = 1 - Math.random();
   const u2 = 1 - Math.random();
-  const z  = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
-  return mean + std * z;
+  return mean + std * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
 }
 
-// ── Seed builders (called exactly once, outside render) ──────────────────────
+// ── Seed builders ────────────────────────────────────────────────────────────
 
 function buildSeedHistory() {
-  const now    = Date.now();
-  const total  = SCENARIO_PHASES.reduce((acc, p) => acc + p.duration, 0);
-  let   cursor = now - total * SAMPLE_INTERVAL_MS;
-  const points = [];
-
+  const total  = SCENARIO_PHASES.reduce((a, p) => a + p.duration, 0);
+  let   cursor = Date.now() - total * SAMPLE_INTERVAL_MS;
+  const pts    = [];
   for (const phase of SCENARIO_PHASES) {
     for (let i = 0; i < phase.duration; i++) {
       const value = clamp(Math.round(gaussianRandom(phase.mean, phase.std)), 0, 1023);
-      points.push({ time: toIST(new Date(cursor)), value });
+      pts.push({ time: toIST(new Date(cursor)), value });
       cursor += SAMPLE_INTERVAL_MS;
     }
   }
-  return points;
+  return pts;
 }
 
 function buildSeedIncidents(chartData) {
   const incidents     = [];
-  let   incidentId    = 1;
+  let   id            = 1;
   let   inEvent       = false;
   let   eventStart    = null;
   let   eventPeak     = 0;
@@ -84,27 +104,24 @@ function buildSeedIncidents(chartData) {
       eventLevel    = level;
       eventStartIdx = i;
     } else if (inEvent) {
-      if (value > eventPeak)        eventPeak = value;
-      if (level === 'critical')     eventLevel = 'critical';
+      if (value > eventPeak)    eventPeak = value;
+      if (level === 'critical') eventLevel = 'critical';
 
       const isLast       = i === chartData.length - 1;
       const nextIsNormal = !isLast && getSeverity(chartData[i + 1].value) === 'normal';
 
       if (nextIsNormal || isLast) {
-        const durationSecs = (((i - eventStartIdx) + 1) * SAMPLE_INTERVAL_MS / 1000).toFixed(0);
+        const dur = (((i - eventStartIdx) + 1) * SAMPLE_INTERVAL_MS / 1000).toFixed(0);
         incidents.push({
-          id:        incidentId++,
+          id:        id++,
           timestamp: eventStart,
           peakValue: eventPeak,
           severity:  eventLevel,
-          duration:  `${durationSecs} s`,
+          duration:  `${dur} s`,
           resolved:  !isLast,
         });
-        inEvent       = false;
-        eventStart    = null;
-        eventPeak     = 0;
-        eventLevel    = 'normal';
-        eventStartIdx = 0;
+        inEvent = false; eventStart = null;
+        eventPeak = 0;   eventLevel = 'normal'; eventStartIdx = 0;
       }
     }
   }
@@ -114,29 +131,26 @@ function buildSeedIncidents(chartData) {
 // ── App ───────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  // Lazy initialisers — the functions are called only once on mount,
-  // not on every re-render.
-  const [chartData,     setChartData]     = useState(() => buildSeedHistory());
-  const [currentValue,  setCurrentValue]  = useState(() => {
-    const h = buildSeedHistory();
-    return h[h.length - 1]?.value ?? 0;
+  // All seed state initialised lazily — called once on mount only
+  const [chartData,    setChartData]    = useState(() => buildSeedHistory().slice(-MAX_CHART_POINTS));
+  const [currentValue, setCurrentValue] = useState(() => {
+    const h = buildSeedHistory(); return h[h.length - 1]?.value ?? 0;
   });
-  const [peakToday,     setPeakToday]     = useState(() => {
-    const h = buildSeedHistory();
-    return Math.max(...h.map(d => d.value));
+  const [peakToday,    setPeakToday]    = useState(() => {
+    const h = buildSeedHistory(); return Math.max(...h.map(d => d.value));
   });
-  const [sampleCount,   setSampleCount]   = useState(() => {
-    return SCENARIO_PHASES.reduce((acc, p) => acc + p.duration, 0);
+  const [sampleCount,  setSampleCount]  = useState(() =>
+    SCENARIO_PHASES.reduce((a, p) => a + p.duration, 0)
+  );
+  const [incidents,    setIncidents]    = useState(() => {
+    const h = buildSeedHistory(); return buildSeedIncidents(h);
   });
-  const [incidents,     setIncidents]     = useState(() => {
-    const h = buildSeedHistory();
-    return buildSeedIncidents(h);
-  });
-  const [isOnline] = useState(true);
+  // Simulated latency (jitters slightly each tick to feel live)
+  const [latencyMs, setLatencyMs] = useState(24);
+  const [isOnline]                = useState(true);
 
-  // Refs for mutable values that shouldn't trigger re-renders
   const openIncidentRef = useRef(null);
-  const phaseRef        = useRef({ phaseIndex: 0, stepInPhase: 0 });
+  const phaseRef        = useRef({ phaseIndex: SCENARIO_PHASES.length - 1, stepInPhase: 0 });
 
   const tick = useCallback(() => {
     const { phaseIndex, stepInPhase } = phaseRef.current;
@@ -145,66 +159,44 @@ export default function App() {
     const newTime  = toIST(new Date());
     const newLevel = getSeverity(newVal);
 
-    // Advance scenario phase pointer
     const nextStep = stepInPhase + 1;
     phaseRef.current = nextStep >= phase.duration
       ? { phaseIndex: (phaseIndex + 1) % SCENARIO_PHASES.length, stepInPhase: 0 }
       : { phaseIndex, stepInPhase: nextStep };
 
-    // Update scalar state
     setCurrentValue(newVal);
     setPeakToday(prev => Math.max(prev, newVal));
     setSampleCount(prev => prev + 1);
+    // Jitter latency ±5 ms
+    setLatencyMs(prev => Math.max(8, Math.min(80, prev + Math.round((Math.random() - 0.5) * 10))));
 
-    // Rolling chart window
     setChartData(prev => {
       const next = [...prev, { time: newTime, value: newVal }];
       return next.length > MAX_CHART_POINTS ? next.slice(-MAX_CHART_POINTS) : next;
     });
 
-    // ── Incident tracking ───────────────────────────────────────────────────
     if (newLevel !== 'normal') {
       if (!openIncidentRef.current) {
-        // Open a new incident — capture to local const so the state updater
-        // closure reads the right object even if the ref is overwritten later.
-        const newIncident = {
-          id:        Date.now(),
-          timestamp: newTime,
-          peakValue: newVal,
-          severity:  newLevel,
-          resolved:  false,
-          duration:  '—',
-        };
-        openIncidentRef.current = newIncident;
-        setIncidents(prev => [newIncident, ...prev]);
+        const newInc = { id: Date.now(), timestamp: newTime, peakValue: newVal, severity: newLevel, resolved: false, duration: '—' };
+        openIncidentRef.current = newInc;
+        setIncidents(prev => [newInc, ...prev]);
       } else {
-        // Update peak / escalate severity of the open incident
         const updated = {
           ...openIncidentRef.current,
           peakValue: Math.max(openIncidentRef.current.peakValue, newVal),
           severity:  newLevel === 'critical' ? 'critical' : openIncidentRef.current.severity,
         };
         openIncidentRef.current = updated;
-        // Capture id to avoid stale closure over the ref object
-        const updatedId = updated.id;
-        setIncidents(prev =>
-          prev.map(inc => (inc.id === updatedId ? updated : inc))
-        );
+        const uid = updated.id;
+        setIncidents(prev => prev.map(i => i.id === uid ? updated : i));
       }
     } else if (openIncidentRef.current) {
-      // Gas returned to normal — close the open incident
-      const closed = {
-        ...openIncidentRef.current,
-        resolved: true,
-        duration: `${Math.round(SAMPLE_INTERVAL_MS * 3 / 1000)} s`,
-      };
+      const closed   = { ...openIncidentRef.current, resolved: true, duration: `${Math.round(SAMPLE_INTERVAL_MS * 3 / 1000)} s` };
       const closedId = closed.id;
       openIncidentRef.current = null;
-      setIncidents(prev =>
-        prev.map(inc => (inc.id === closedId ? closed : inc))
-      );
+      setIncidents(prev => prev.map(i => i.id === closedId ? closed : i));
     }
-  }, []); // no deps: all references are module-level constants or refs
+  }, []);
 
   useEffect(() => {
     const id = setInterval(tick, SAMPLE_INTERVAL_MS);
@@ -215,12 +207,10 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-slate-100">
-      {/* ── Top header bar ─────────────────────────────── */}
-      <Header isOnline={isOnline} />
+      <Header isOnline={isOnline} latencyMs={latencyMs} />
 
-      {/* ── Main content ───────────────────────────────── */}
-      <main className="flex flex-col flex-1 gap-3 p-4 overflow-hidden">
-        {/* Status banner — primary focal point */}
+      <main className="flex flex-col flex-1 gap-2.5 p-3 overflow-hidden min-h-0">
+        {/* Hero status banner */}
         <StatusBanner
           currentValue={currentValue}
           peakToday={peakToday}
@@ -228,15 +218,12 @@ export default function App() {
           alertCount={criticalCount}
         />
 
-        {/* Lower section: chart + incident table */}
-        <div className="flex flex-1 gap-3 min-h-0">
-          {/* Trend chart — 60% width */}
-          <div className="flex-[3] min-w-0">
+        {/* Lower split: chart 7 : history 5 */}
+        <div className="flex flex-1 gap-2.5 min-h-0">
+          <div className="flex-[7] min-w-0">
             <TrendChart data={chartData} />
           </div>
-
-          {/* Incident history — 40% width */}
-          <div className="flex-[2] min-w-0">
+          <div className="flex-[5] min-w-0">
             <IncidentHistory incidents={incidents} />
           </div>
         </div>
