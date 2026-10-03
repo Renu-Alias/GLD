@@ -1,0 +1,80 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Base Typography ─────────────────────────────────────── */
+@layer base {
+  html, body {
+    @apply font-sans text-slate-900 bg-slate-50;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Thin custom scrollbar for the incident table */
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-slate-100 rounded-full;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-slate-300 rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-slate-400;
+  }
+}
+
+/* ── Reusable Component Utilities ────────────────────────── */
+@layer components {
+  /* Card container */
+  .card {
+    @apply bg-white border border-slate-200 rounded-xl shadow-sm;
+  }
+
+  /* LED glow effects */
+  .led-green {
+    background-color: #22c55e;
+    animation: glowGreen 2s ease-in-out infinite alternate;
+  }
+  .led-amber {
+    background-color: #f59e0b;
+    animation: glowAmber 2s ease-in-out infinite alternate;
+  }
+  .led-red {
+    background-color: #ef4444;
+    animation: glowRed 1.2s ease-in-out infinite alternate;
+  }
+
+  /* Connection pulse dot */
+  .pulse-dot {
+    @apply relative inline-flex h-2.5 w-2.5;
+  }
+  .pulse-dot::before {
+    content: '';
+    @apply absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75;
+    animation: ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+  .pulse-dot::after {
+    content: '';
+    @apply relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500;
+  }
+}
+
+/* ── Custom Keyframes (Tailwind extend mirrors these) ─────── */
+@keyframes glowGreen {
+  0%   { box-shadow: 0 0 4px 1px rgba(34, 197, 94, 0.4); }
+  100% { box-shadow: 0 0 14px 5px rgba(34, 197, 94, 0.75); }
+}
+@keyframes glowAmber {
+  0%   { box-shadow: 0 0 4px 1px rgba(245, 158, 11, 0.4); }
+  100% { box-shadow: 0 0 14px 5px rgba(245, 158, 11, 0.75); }
+}
+@keyframes glowRed {
+  0%   { box-shadow: 0 0 6px 2px rgba(239, 68, 68, 0.5); }
+  100% { box-shadow: 0 0 20px 7px rgba(239, 68, 68, 0.9); }
+}
+@keyframes ping {
+  75%, 100% { transform: scale(2); opacity: 0; }
+}
