@@ -77,7 +77,7 @@ export default function TrendChart({ data = [] }) {
   const yDomain   = [0, Math.ceil(maxValue * 1.12 / 100) * 100];
 
   return (
-    <div className="card flex flex-col h-full">
+    <div className="card flex flex-col h-full relative">
       {/* Card header */}
       <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-slate-100">
         <div className="flex items-center gap-2">

@@ -1,6 +1,7 @@
 {
   "name": "smart-gas-leak-detector-dashboard",
   "version": "1.0.0",
+  "type": "module",
   "description": "Smart Gas Leak Detector and Alert System – IoT Monitoring Dashboard",
   "private": true,
   "scripts": {

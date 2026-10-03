@@ -75,10 +75,9 @@ function LEDIndicator({ config }) {
         RGB LED Status
       </p>
       <div className="flex items-center gap-3 px-4 py-2.5 bg-slate-950 rounded-xl border border-slate-800">
-        {/* The glowing LED orb */}
+        {/* The glowing LED orb — ledClass applies the CSS glow keyframe animation */}
         <span
-          className={`inline-block w-5 h-5 rounded-full ${config.ledBg}`}
-          style={{ filter: 'brightness(1.1)' }}
+          className={`inline-block w-5 h-5 rounded-full ${config.ledClass}`}
           aria-label={`LED color: ${config.ledLabel}`}
         />
         <span className="font-mono text-[13px] font-medium tracking-widest text-slate-200">
