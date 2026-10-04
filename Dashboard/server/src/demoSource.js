@@ -22,7 +22,7 @@ const gaussian = (mean, std) => {
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
 const stateFor = (value, t) => {
-  if (t.warning < value) return 'DANGER';
+  if (value >= t.danger) return 'DANGER';
   if (value >= t.warning) return 'WARNING';
   return 'SAFE';
 };
@@ -33,7 +33,7 @@ const stateFor = (value, t) => {
  * It emits frames in the *exact* wire format the firmware emits, so the demo path
  * goes through the same parser, session state machine and API as real hardware.
  * The only difference is the `source` flag, which the UI renders as a visible
- * "SIMULATED" badge — a demo reading must never be mistaken for a sensor value.
+ * "SIMULATED" badge - a demo reading must never be mistaken for a sensor value.
  */
 export class DemoSource extends EventEmitter {
   #timer = null;

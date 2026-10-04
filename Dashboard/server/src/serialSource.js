@@ -69,7 +69,7 @@ export function friendlyOpenError(err, path) {
       + `and any other serial monitor, then reconnect the cable.`;
   }
   if (code === 'ENOENT' || /no such file|cannot find/i.test(message)) {
-    return `${path} disappeared — the board was unplugged or reset.`;
+    return `${path} disappeared - the board was unplugged or reset.`;
   }
   if (/timeout|timed out/i.test(message)) {
     return `Timed out opening ${path}. Check the cable is a data cable, not a charge-only cable.`;

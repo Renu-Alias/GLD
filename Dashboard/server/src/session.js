@@ -2,8 +2,8 @@ import { DEFAULT_THRESHOLDS } from './config.js';
 import { STATE, severityForState, isIncidentState } from './telemetry.js';
 
 /**
- * Mirrors the firmware's hysteresis so that legacy frames — which carry no state
- * field — still produce an incident log that matches what the hardware actually
+ * Mirrors the firmware's hysteresis so that legacy frames - which carry no state
+ * field - still produce an incident log that matches what the hardware actually
  * did, instead of chattering at the raw trip threshold.
  */
 class HysteresisClassifier {

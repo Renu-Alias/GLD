@@ -166,7 +166,7 @@ test('legacy frames without a state are classified with firmware hysteresis', ()
   assert.equal(s.incidents.length, 1);
   assert.equal(s.incidents[0].severity, 'warning');
 
-  // 460 is above the 500 trip threshold? No — it is below it but still above the
+  // 460 is above the 500 trip threshold? No - it is below it but still above the
   // 420 clear threshold, so the incident must stay open rather than chatter.
   assert.equal(legacy(460).event, null);
   assert.equal(s.incidents.length, 1);

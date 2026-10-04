@@ -23,7 +23,7 @@ const hub = new SseHub();
 
 let lastLink = null;
 
-// ── Line intake ───────────────────────────────────────────────────────────────
+// == Line intake ===============================================================
 
 function handleLine(line) {
   const parsed = parseLine(line);
@@ -60,17 +60,17 @@ function handleLine(line) {
 
   if (parsed.source === 'legacy' && !session.warnedLegacy) {
     session.warnedLegacy = true;
-    warn('[bridge] board is sending legacy "Gas Value:" frames — reflash GLD.ino for full telemetry');
+    warn('[bridge] board is sending legacy "Gas Value:" frames - reflash GLD.ino for full telemetry');
   }
 }
 
-// ── Wiring ────────────────────────────────────────────────────────────────────
+// == Wiring ====================================================================
 
 let serial = null;
 let demo = null;
 
 if (config.demo) {
-  warn('[bridge] DEMO MODE — readings are synthetic, not from a sensor.');
+  warn('[bridge] DEMO MODE - readings are synthetic, not from a sensor.');
   demo = new DemoSource();
   demo.on('line', handleLine);
   demo.start();
@@ -84,12 +84,12 @@ if (config.demo) {
 
   const decoder = new LineDecoder({
     onLine: handleLine,
-    onOverflow: (len) => warn(`[bridge] dropped ${len} buffered bytes — check the baud rate`),
+    onOverflow: (len) => warn(`[bridge] dropped ${len} buffered bytes - check the baud rate`),
   });
 
   serial.on('chunk', (chunk) => decoder.push(chunk.toString('utf8')));
   serial.on('open', ({ path: label }) => {
-    log(`[bridge] connected to ${path}${label ? ` (${label})` : ''} — waiting for telemetry`);
+    log(`[bridge] connected to ${path}${label ? ` (${label})` : ''} - waiting for telemetry`);
   });
 
   serial.start().catch((err) => warn(`[bridge] could not start serial source: ${err.message}`));
@@ -102,7 +102,7 @@ const getStatus = () =>
 
 const listPorts = async () => (serial ? serial.listPorts() : []);
 
-// ── HTTP ──────────────────────────────────────────────────────────────────────
+// == HTTP ======================================================================
 
 const handler = createRequestHandler({ session, getStatus, listPorts });
 
@@ -140,7 +140,7 @@ server.listen(config.port, config.host, () => {
   log('');
 });
 
-// ── Shutdown ──────────────────────────────────────────────────────────────────
+// == Shutdown ==================================================================
 
 let shuttingDown = false;
 
