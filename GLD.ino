@@ -143,22 +143,17 @@ String buildSmsPayload(AlarmState state) {
 bool sendAlertSms(int gasValue, AlarmState state) {
 
   if (WiFi.status() != WL_CONNECTED) {
-    // Try to nudge reconnect before giving up
-    maintainWifi();
-    delay(200); // give WiFi stack a moment
 
-    if (WiFi.status() != WL_CONNECTED) {
-      unsigned long now = millis();
-      if (now - lastSmsOfflineLogTime >= SMS_OFFLINE_LOG_MS) {
-        lastSmsOfflineLogTime = now;
-        Serial.print("[SMS] skipped, wifi offline (status=");
-        Serial.print(WiFi.status());
-        Serial.print(", RSSI=");
-        Serial.print(WiFi.RSSI());
-        Serial.println(")");
-      }
-      return false;
+    unsigned long now = millis();
+
+    if (now - lastSmsOfflineLogTime >= SMS_OFFLINE_LOG_MS) {
+      lastSmsOfflineLogTime = now;
+      Serial.print("[SMS] skipped, wifi offline (status=");
+      Serial.print(WiFi.status());
+      Serial.println(")");
     }
+
+    return false;
   }
 
   smsAttemptsThisEvent++;
@@ -321,14 +316,7 @@ bool smsDue(unsigned long currentTime) {
   }
 
   if (WiFi.status() != WL_CONNECTED) {
-    maintainWifi();
-    delay(200);
-    if (WiFi.status() != WL_CONNECTED) {
-      Serial.print('[SMS DUE] wifi offline status=');
-      Serial.print(WiFi.status());
-      Serial.println();
-      return false;
-    }
+    return false;
   }
 
   if (smsAttemptsThisEvent == 0) {
