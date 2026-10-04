@@ -1,1 +1,8 @@
 secrets.h
+
+# Installed by npm, not source. serialport also ships platform-specific native
+# binaries that must never be committed.
+node_modules/
+
+# Vite build output for the frontend is intentionally committed, so the bridge can
+# serve the dashboard without a build step. Do not add dist/ here.

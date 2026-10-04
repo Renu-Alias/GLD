@@ -47,5 +47,6 @@ export const config = {
   /** Synthetic feed for UI work with no board attached. Never on by default. */
   demo: process.argv.includes('--demo') || process.env.DEMO === '1',
 
-  staticDir: path.resolve(here, '..', 'frontend', 'dist'),
+  /** Production build of the dashboard, served from the same origin as the API. */
+  staticDir: path.resolve(here, '..', '..', 'frontend', 'dist'),
 };

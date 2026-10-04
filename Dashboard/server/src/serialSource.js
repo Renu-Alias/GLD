@@ -13,8 +13,12 @@ const KNOWN_USB_IDS = new Map([
   ['0x2341', 'Arduino'],
 ]);
 
-const normaliseHex = (value) =>
-  typeof value === 'string' ? value.toLowerCase().replace(/^0x/, '').padStart(4, '0') : '';
+// Kept in the same `0x`-prefixed form as the keys of KNOWN_USB_IDS, so a binding
+// that reports "303A" or "0x303a" both match.
+const normaliseHex = (value) => {
+  if (typeof value !== 'string') return '';
+  return `0x${value.toLowerCase().replace(/^0x/, '').padStart(4, '0')}`;
+};
 
 export function describePort(port) {
   const vid = normaliseHex(port.vendorId);

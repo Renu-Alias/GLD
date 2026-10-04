@@ -25,7 +25,9 @@ export class SseHub {
     this.#write(res, 'peers', { clients: this.#clients.size });
 
     const drop = () => {
-      if (this.#clients.delete(res)) this.#write(res, 'peers', { clients: this.#clients.size });
+      if (!this.#clients.delete(res)) return;
+      // Tell the dashboards that are still connected, not the one that just left.
+      for (const peer of this.#clients) this.#write(peer, 'peers', { clients: this.#clients.size });
     };
 
     req.on('close', drop);

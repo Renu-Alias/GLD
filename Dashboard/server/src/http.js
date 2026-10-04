@@ -43,27 +43,54 @@ function serveStatic(req, res) {
     return;
   }
 
-  const urlPath = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
-  let filePath = path.join(config.staticDir, urlPath);
+  let urlPath;
+  try {
+    urlPath = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
+  } catch {
+    sendJson(res, 400, { error: 'malformed request path' });
+    return;
+  }
 
-  // Keep traversal inside the build directory.
-  if (!filePath.startsWith(config.staticDir)) {
+  // Resolve against the root and compare with a trailing separator, so neither
+  // "../" nor a sibling directory that merely shares the root's name prefix
+  // ("dist-old") can escape the build directory.
+  const root = path.resolve(config.staticDir);
+  let filePath = path.resolve(root, `.${path.posix.normalize(urlPath)}`);
+
+  if (filePath !== root && !filePath.startsWith(root + path.sep)) {
     sendJson(res, 403, { error: 'forbidden' });
     return;
   }
 
   if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
-    filePath = path.join(config.staticDir, 'index.html');
+    // Client-side routing: unknown paths fall back to the SPA shell.
+    filePath = path.join(root, 'index.html');
+  }
+
+  if (!fs.existsSync(filePath)) {
+    sendJson(res, 404, {
+      error: 'not found',
+      detail: `${config.staticDir} has no index.html. Re-run "npm run build" in Dashboard/frontend.`,
+    });
+    return;
   }
 
   const type = MIME[path.extname(filePath).toLowerCase()] ?? 'application/octet-stream';
-  const immutable = filePath.includes(`${path.sep}assets${path.sep}`);
+  const immutable = filePath.startsWith(path.join(root, 'assets') + path.sep);
 
   res.writeHead(200, {
     'content-type': type,
     'cache-control': immutable ? 'public, max-age=31536000, immutable' : 'no-cache',
   });
-  fs.createReadStream(filePath).pipe(res);
+
+  // Node suppresses the body of a HEAD response for us, so this is correct for
+  // HEAD requests too.
+  const stream = fs.createReadStream(filePath);
+  stream.on('error', () => {
+    if (res.headersSent) res.end();
+    else sendJson(res, 500, { error: 'could not read file' });
+  });
+  stream.pipe(res);
 }
 
 export function createRequestHandler({ session, getStatus, listPorts }) {
