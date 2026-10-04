@@ -1,0 +1,20 @@
+{
+  "name": "gld-dashboard-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "USB serial bridge: ESP32 MQ-6 telemetry -> HTTP/SSE API for the Gas Leak Dashboard",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "demo": "node src/index.js --demo",
+    "ports": "node src/list-ports.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "serialport": "^13.0.0"
+  }
+}

@@ -25,6 +25,11 @@
 #define LOG_INTERVAL_MS 2500UL
 #define SAFE_LOG_INTERVAL_MS 10000UL
 
+// Serial telemetry consumed by the Dashboard bridge (Dashboard/server).
+// Emitted once per ADC sample, alongside the human-readable log lines.
+#define TELEM_TAG "TELEM"
+#define CFG_TAG "#CFG"
+
 #define SMS_HOST "www.circuitdigest.cloud"
 #define SMS_PATH "/api/v1/send_sms"
 #define SMS_HTTP_TIMEOUT_MS 5000
@@ -351,6 +356,45 @@ void logGas(int gasValue, const char *label) {
   Serial.println();
 }
 
+// Thresholds the dashboard renders as its reference lines. Sent once at boot so
+// the UI can never drift from the values actually compiled into this firmware.
+void emitConfig() {
+
+  Serial.print(CFG_TAG);
+  Serial.print(",warn=");
+  Serial.print(WARNING_THRESHOLD);
+  Serial.print(",danger=");
+  Serial.print(DANGER_THRESHOLD);
+  Serial.print(",warnClear=");
+  Serial.print(WARNING_CLEAR_THRESHOLD);
+  Serial.print(",dangerClear=");
+  Serial.print(DANGER_CLEAR_THRESHOLD);
+  Serial.print(",sampleMs=");
+  Serial.print(SAMPLE_INTERVAL_MS);
+  Serial.print(",adcMax=1023");
+  Serial.println();
+}
+
+// One telemetry frame per ADC sample. Key=value comma pairs on a single line so
+// the host parser never has to guess at field order.
+void emitTelemetry(int gasValue, const char *label) {
+
+  Serial.print(TELEM_TAG);
+  Serial.print(",gas=");
+  Serial.print(gasValue);
+  Serial.print(",state=");
+  Serial.print(label == NULL ? "UNKNOWN" : label);
+  Serial.print(",up=");
+  Serial.print(millis());
+  Serial.print(",rssi=");
+  Serial.print(WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : 0);
+  Serial.print(",muted=");
+  Serial.print(alarmMuted ? 1 : 0);
+  Serial.print(",warm=");
+  Serial.print(warmupComplete ? 0 : 1);
+  Serial.println();
+}
+
 void setup() {
 
   Serial.begin(115200);
@@ -364,6 +408,8 @@ void setup() {
   pinMode(BUTTON_PIN, INPUT_PULLUP);
 
   noTone(BUZZER_PIN);
+
+  emitConfig();
 
   Serial.print("[SMS] template: ");
   Serial.print(CD_TEMPLATE_ID);
@@ -432,6 +478,8 @@ void loop() {
       logGas(gasValue, "warming up");
     }
 
+    emitTelemetry(gasValue, "WARMUP");
+
     return;
   }
 
@@ -452,6 +500,8 @@ void loop() {
       lastLogTime = currentTime;
       logGas(gasValue, "SAFE");
     }
+
+    emitTelemetry(gasValue, "SAFE");
 
     return;
   }
@@ -480,4 +530,6 @@ void loop() {
     lastLogTime = currentTime;
     logGas(gasValue, alarmState == STATE_WARNING ? "WARNING" : "DANGER");
   }
+
+  emitTelemetry(gasValue, alarmState == STATE_WARNING ? "WARNING" : "DANGER");
 }
