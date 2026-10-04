@@ -1,34 +1,25 @@
 import { useState } from 'react';
 import { AlertTriangle, CheckCircle2, Flame, History, ShieldAlert, Search } from 'lucide-react';
+import { formatDuration, formatTime } from '../lib/format';
 
-// ── Severity row config — uses CSS custom properties ──────────────────────────
 const SEV_ROW = {
   critical: {
-    rowBg:      '#FDECEE',
+    rowBg: '#FDECEE',
     leftBorder: '#D64550',
-    valColor:   'var(--c-crit)',
-    badge: {
-      bg: '#FDECEE', border: 'var(--c-crit-border)',
-      text: 'var(--c-crit)', label: 'Critical', Icon: Flame,
-    },
+    valColor: 'var(--c-crit)',
+    badge: { bg: '#FDECEE', border: 'var(--c-crit-border)', text: 'var(--c-crit)', label: 'Critical', Icon: Flame },
   },
   warning: {
-    rowBg:      '#FFF7E6',
+    rowBg: '#FFF7E6',
     leftBorder: '#D99A24',
-    valColor:   'var(--c-warn)',
-    badge: {
-      bg: '#FFF7E6', border: 'var(--c-warn-border)',
-      text: 'var(--c-warn)', label: 'Warning', Icon: AlertTriangle,
-    },
+    valColor: 'var(--c-warn)',
+    badge: { bg: '#FFF7E6', border: 'var(--c-warn-border)', text: 'var(--c-warn)', label: 'Warning', Icon: AlertTriangle },
   },
   normal: {
-    rowBg:      '#EAF8F3',
+    rowBg: '#EAF8F3',
     leftBorder: '#16A37A44',
-    valColor:   'var(--c-navy)',
-    badge: {
-      bg: '#EAF8F3', border: 'var(--c-safe-border)',
-      text: 'var(--c-safe)', label: 'Normal', Icon: CheckCircle2,
-    },
+    valColor: 'var(--c-navy)',
+    badge: { bg: '#EAF8F3', border: 'var(--c-safe-border)', text: 'var(--c-safe)', label: 'Normal', Icon: CheckCircle2 },
   },
 };
 
@@ -61,7 +52,7 @@ function ActivePill() {
 }
 
 function IncidentRow({ incident, index }) {
-  const cfg = SEV_ROW[incident.severity] ?? SEV_ROW.normal;
+  const cfg = SEV_ROW[incident.severity] ?? SEV_ROW.warning;
   return (
     <tr
       style={{ background: cfg.rowBg, borderLeft: `2px solid ${cfg.leftBorder}` }}
@@ -72,7 +63,7 @@ function IncidentRow({ incident, index }) {
       </td>
       <td className="px-3 py-2">
         <span className="font-mono text-[11px] whitespace-nowrap" style={{ color: 'var(--c-navy)' }}>
-          {incident.timestamp}
+          {formatTime(incident.startedAt)}
         </span>
       </td>
       <td className="px-3 py-2 text-center">
@@ -86,43 +77,45 @@ function IncidentRow({ incident, index }) {
       </td>
       <td className="px-3 pr-3 py-2 text-right">
         {incident.resolved
-          ? <span className="font-mono text-[11px]" style={{ color: 'var(--c-muted)' }}>{incident.duration}</span>
-          : <ActivePill />
-        }
+          ? <span className="font-mono text-[11px]" style={{ color: 'var(--c-muted)' }}>{formatDuration(incident.durationMs)}</span>
+          : <ActivePill />}
       </td>
     </tr>
   );
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
+const COLGROUP = (
+  <colgroup>
+    <col className="w-8" />
+    <col className="w-[33%]" />
+    <col className="w-[16%]" />
+    <col className="w-[26%]" />
+    <col className="w-[19%]" />
+  </colgroup>
+);
+
 export default function IncidentHistory({ incidents = [] }) {
   const [filter, setFilter] = useState('all');
 
   const criticalCount = incidents.filter(i => i.severity === 'critical').length;
-  const warningCount  = incidents.filter(i => i.severity === 'warning').length;
+  const warningCount = incidents.filter(i => i.severity === 'warning').length;
 
-  const filtered = filter === 'all'
-    ? incidents
-    : incidents.filter(i => i.severity === filter);
+  const filtered = filter === 'all' ? incidents : incidents.filter(i => i.severity === filter);
 
   const FILTER_TABS = [
-    { key: 'all',      label: `All (${incidents.length})` },
+    { key: 'all', label: `All (${incidents.length})` },
     { key: 'critical', label: `Critical (${criticalCount})` },
-    { key: 'warning',  label: `Warn (${warningCount})` },
+    { key: 'warning', label: `Warn (${warningCount})` },
   ];
 
   return (
     <div className="card flex flex-col h-full overflow-hidden">
-      {/* ── Card header ─────────────────────────── */}
       <div
         className="flex items-center justify-between px-4 pt-3.5 pb-3 flex-shrink-0"
         style={{ borderBottom: '1px solid var(--c-border)' }}
       >
         <div className="flex items-center gap-2">
-          <div
-            className="w-5 h-5 rounded-md flex items-center justify-center"
-            style={{ background: '#F4F6F8' }}
-          >
+          <div className="w-5 h-5 rounded-md flex items-center justify-center" style={{ background: '#F4F6F8' }}>
             <History size={11} strokeWidth={2.5} style={{ color: 'var(--c-muted)' }} />
           </div>
           <span className="text-[12px] font-semibold" style={{ color: 'var(--c-navy)' }}>
@@ -149,7 +142,6 @@ export default function IncidentHistory({ incidents = [] }) {
         </div>
       </div>
 
-      {/* ── Filter tabs ─────────────────────────── */}
       <div
         className="flex items-center gap-1 px-4 py-2 flex-shrink-0"
         style={{ borderBottom: '1px solid var(--c-border)', background: '#FAFBFC' }}
@@ -171,23 +163,13 @@ export default function IncidentHistory({ incidents = [] }) {
         ))}
       </div>
 
-      {/* ── Column headers ──────────────────────── */}
-      <div
-        className="flex-shrink-0"
-        style={{ background: '#FAFBFC', borderBottom: '1px solid var(--c-border)' }}
-      >
+      <div className="flex-shrink-0" style={{ background: '#FAFBFC', borderBottom: '1px solid var(--c-border)' }}>
         <table className="w-full table-fixed">
-          <colgroup>
-            <col className="w-8" />
-            <col className="w-[33%]" />
-            <col className="w-[16%]" />
-            <col className="w-[26%]" />
-            <col className="w-[19%]" />
-          </colgroup>
+          {COLGROUP}
           <thead>
             <tr>
               <th className="pl-3 pr-2 py-1.5 kpi-label text-center">#</th>
-              <th className="px-3 py-1.5 kpi-label text-left">Timestamp (IST)</th>
+              <th className="px-3 py-1.5 kpi-label text-left">Start (IST)</th>
               <th className="px-3 py-1.5 kpi-label text-center">Peak ADC</th>
               <th className="px-3 py-1.5 kpi-label text-center">Severity</th>
               <th className="px-3 pr-3 py-1.5 kpi-label text-right">Duration</th>
@@ -196,22 +178,22 @@ export default function IncidentHistory({ incidents = [] }) {
         </table>
       </div>
 
-      {/* ── Scrollable rows ─────────────────────── */}
       <div className="flex-1 overflow-y-auto">
         {filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full gap-2" style={{ color: 'var(--c-muted)' }}>
+          <div className="flex flex-col items-center justify-center h-full gap-2 px-4 text-center" style={{ color: 'var(--c-muted)' }}>
             <CheckCircle2 size={24} strokeWidth={1.5} style={{ color: 'var(--c-safe)' }} />
-            <p className="text-[12px] font-semibold">No events match this filter</p>
+            <p className="text-[12px] font-semibold">
+              {incidents.length === 0 ? 'No leak events recorded' : 'No events match this filter'}
+            </p>
+            {incidents.length === 0 && (
+              <p className="text-[10px]">
+                Incidents are created from the real gas readings reported by the sensor.
+              </p>
+            )}
           </div>
         ) : (
           <table className="w-full table-fixed">
-            <colgroup>
-              <col className="w-8" />
-              <col className="w-[33%]" />
-              <col className="w-[16%]" />
-              <col className="w-[26%]" />
-              <col className="w-[19%]" />
-            </colgroup>
+            {COLGROUP}
             <tbody>
               {filtered.map((inc, i) => (
                 <IncidentRow key={inc.id} incident={inc} index={i} />
