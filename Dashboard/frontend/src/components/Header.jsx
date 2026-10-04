@@ -77,7 +77,7 @@ export default function Header({
               className="text-[10px] font-medium tracking-widest uppercase leading-tight"
               style={{ color: 'var(--c-muted)' }}
             >
-              MQ-6 LPG Sensor · USB Serial Node #01
+              MQ-6 LPG Sensor Output - USB Serial Node #01
             </p>
           </div>
         </div>
@@ -111,7 +111,7 @@ export default function Header({
               {lastReadingAt ? (
                 <>
                   <span style={{ color: cfg.color }}>{formatTime(lastReadingAt)}</span>
-                  {' · '}
+                  {' - '}
                   {formatAge(age)}
                 </>
               ) : (

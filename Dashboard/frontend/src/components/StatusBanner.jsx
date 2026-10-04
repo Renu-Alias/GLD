@@ -63,7 +63,7 @@ function GasValueDisplay({ value, sev, hasData }) {
       className="flex flex-col items-center justify-center px-8 py-4 rounded-xl"
       style={{ background: sev.valueBg, border: `2px solid ${sev.valueBorder}` }}
     >
-      <span className="kpi-label mb-2">Current Gas Level</span>
+      <span className="kpi-label mb-2">MQ-6 Sensor Output (Gas Reading)</span>
       <div className="flex items-end gap-2 leading-none">
         <span
           className="font-mono text-[64px] font-bold tabular-nums leading-none"
@@ -72,7 +72,7 @@ function GasValueDisplay({ value, sev, hasData }) {
           {hasData ? value.toLocaleString() : '--'}
         </span>
         <span className="font-mono text-[14px] font-semibold mb-2" style={{ color: 'var(--c-muted)' }}>
-          ADC
+          ADC (MQ-6 Output)
         </span>
       </div>
       <div
@@ -160,7 +160,7 @@ function ThresholdTable({ thresholds }) {
         </div>
       ))}
       <p className="text-[9px] font-medium leading-tight mt-0.5" style={{ color: 'var(--c-muted)' }}>
-        Reported by the ESP32 over serial (0-{adcMax} ADC)
+        MQ-6 sensor output reported by ESP32 over serial (0-{adcMax} ADC)
       </p>
     </div>
   );
