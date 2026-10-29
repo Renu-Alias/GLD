@@ -121,7 +121,7 @@ Clients are dropped automatically when their socket dies.
 | `waiting` | Bridge up, no frame yet, still inside the cold-start window |
 | `no-data` | No frame at all within `COLD_START_MS` — check the board and cable |
 | `live` | A frame arrived within `STALE_MS` |
-| `stale` | Frames stopped — the firmware blocks for seconds while sending an SMS |
+| `stale` | Frames stopped. Check the cable and the board's power |
 
 ## Configuration
 
@@ -147,6 +147,19 @@ $env:SERIAL_PORT = "COM7"
 $env:HOST = "0.0.0.0"
 npm start
 ```
+
+## Alerts
+
+Leak alerts go to Telegram. Set these in `Dashboard/server/.env` (copy `.env.example`):
+
+| Variable | Meaning |
+|---|---|
+| `TELEGRAM_BOT_TOKEN` | Token from @BotFather. Keep it secret |
+| `TELEGRAM_CHAT_ID` | Your chat id. Message the bot once, then read it from `getUpdates` |
+| `DATABASE_URL` | Optional Postgres connection for incident history. Alerts do not need it |
+
+One message is sent when a leak opens and one more if it escalates to critical.
+Full setup is in [HOW_TO_RUN.md](../../HOW_TO_RUN.md).
 
 ## Port selection
 

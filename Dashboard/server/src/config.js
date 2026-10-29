@@ -32,7 +32,7 @@ export const config = {
   /** Re-scan for the board every N ms while disconnected. */
   rescanIntervalMs: num(process.env.RESCAN_MS, 2000),
 
-  /** A reading older than this marks the feed stale (firmware blocks ~5s on SMS). */
+  /** A reading older than this marks the feed stale (the board has stopped sending). */
   staleAfterMs: num(process.env.STALE_MS, 3000),
 
   /** No reading ever seen within this window -> "waiting for board". */

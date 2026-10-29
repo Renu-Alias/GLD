@@ -27,8 +27,7 @@
 #define TELEM_TAG "TELEM"
 #define CFG_TAG "#CFG"
 
-// SMS is now handled by the Node.js bridge using Twilio.
-// The ESP32 no longer sends SMS directly.
+// Alerts are sent by the Node.js bridge (Telegram). The ESP32 only raises the local alarm.
 
 #define WIFI_CONNECT_TIMEOUT_MS 20000UL
 #define WIFI_RETRY_INTERVAL_MS 15000UL
@@ -59,8 +58,6 @@ bool buzzerState = false;
 
 bool wifiReady = false;
 unsigned long lastWifiRetryTime = 0;
-
-// SMS functionality removed - now handled by the Node.js bridge using Twilio.
 
 bool warmupComplete = false;
 unsigned long bootTime = 0;
@@ -127,8 +124,6 @@ const char *alertStateLabel(AlarmState state) {
 
   return (state == STATE_DANGER) ? "DANGER" : "WARNING";
 }
-
-// SMS functionality removed - now handled by the Node.js bridge using Twilio.
 
 bool buttonPressed() {
 
@@ -224,41 +219,6 @@ void updateBuzzer(unsigned int frequency, unsigned long period) {
   }
 }
 
-void holdToneDuringSms() {
-
-  if (alarmMuted) {
-    return;
-  }
-
-  buzzerState = true;
-
-  tone(BUZZER_PIN, BUZZER_DANGER_TONE_HZ);
-}
-
-bool smsDue(unsigned long currentTime) {
-
-  if (smsAttemptsThisEvent >= SMS_MAX_ATTEMPTS_PER_EVENT) {
-    return false;
-  }
-
-  if (WiFi.status() != WL_CONNECTED) {
-    maintainWifi();
-    delay(200);
-    if (WiFi.status() != WL_CONNECTED) {
-      Serial.print('[SMS DUE] wifi offline status=');
-      Serial.print(WiFi.status());
-      Serial.println();
-      return false;
-    }
-  }
-
-  if (smsAttemptsThisEvent == 0) {
-    return true;
-  }
-
-  return (currentTime - lastSmsAttemptTime) >= SMS_RETRY_INTERVAL_MS;
-}
-
 void logGas(int gasValue, const char *label) {
 
   Serial.print("Gas Value: ");
@@ -326,11 +286,6 @@ void setup() {
   noTone(BUZZER_PIN);
 
   emitConfig();
-
-  Serial.print("[SMS] template: ");
-  Serial.print(CD_TEMPLATE_ID);
-  Serial.print(", recipient: ");
-  Serial.println(CD_MOBILE);
 
   connectWifi();
 
@@ -431,7 +386,7 @@ void loop() {
     setLed(HIGH, 0, 0);
 
     updateBuzzer(BUZZER_DANGER_TONE_HZ, BUZZER_DANGER_PERIOD_MS);
-    // SMS handled by bridge
+    // remote alert handled by the bridge
   }
 
   if (currentTime - lastLogTime >= LOG_INTERVAL_MS) {

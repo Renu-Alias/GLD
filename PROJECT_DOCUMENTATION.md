@@ -18,6 +18,9 @@ ESP32, MQ-6 (GPIO33), RGB LED (GPIO32/2/4), Passive buzzer (GPIO25 via 2N2222), 
 - DANGER: Red solid LED, 2000Hz beep 150ms (>=800)
 Hysteresis: WARNING clears <420, DANGER clears <700. 20s warmup blinks blue.
 
+## Alerts
+The Node server sends a Telegram message when a leak opens (WARNING, ADC 500) and one more if it escalates to DANGER (ADC 800). The ESP32 sends nothing itself. Rules: Dashboard/server/src/alertPolicy.js.
+
 ## Dashboard
 Runs on port 4310. Reads TELEM/#CFG from serial 115200 baud. Auto-detects ESP32 ports. Supports demo mode.
 API: /api/health, /api/snapshot, /api/stream (SSE). Serves built frontend from dist/.
@@ -27,10 +30,11 @@ API: /api/health, /api/snapshot, /api/stream (SSE). Serves built frontend from d
 - SQLite: readings.db for trend chart data.
 
 ## Quick Start
-1. Copy secrets.h.example to secrets.h, add WiFi/SMS credentials
+1. Copy secrets.h.example to secrets.h, add WiFi credentials
 2. Flash GLD.ino to ESP32
-3. cd Dashboard/server && npm install && npm start
-4. Open http://127.0.0.1:4310
+3. Create a Telegram bot and fill Dashboard/server/.env (see HOW_TO_RUN.md)
+4. cd Dashboard/server && npm install && npm start
+5. Open http://127.0.0.1:4310
 
 ## Files
 See README.md, DATABASE_SCHEMA.md, GLD_info.md for details.
