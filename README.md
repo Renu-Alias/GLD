@@ -4,9 +4,9 @@ An embedded IoT system for real-time LPG leak detection and local + remote alert
 
 ## Overview
 
-LPG is colourless and essentially odourless — the safety odorant added to it only works as a warning if someone is present, awake, and able to smell it. This project closes that awareness gap with a low-cost, always-on ESP32 monitor that continuously samples the air near the cylinder and stove, raises an immediate local audible + visual alarm the instant a leak is detected, and pushes a remote SMS notification so that someone away from the kitchen is informed too.
+LPG is colourless and essentially odourless — the safety odorant added to it only works as a warning if someone is present, awake, and able to smell it. This project closes that awareness gap with a low-cost, always-on ESP32 monitor that continuously samples the air near the cylinder and stove, raises an immediate local audible + visual alarm the instant a leak is detected, and sends a Telegram message so that someone away from the kitchen is informed too.
 
-The local alarm path is entirely GPIO-driven and has **no dependency on WiFi** — it keeps working even during a network or connectivity outage. Remote notification rides on top of that as a best-effort layer.
+The local alarm path is entirely GPIO-driven and has **no dependency on WiFi** — it keeps working even during a network or connectivity outage. Remote notification rides on top of that as a best-effort layer. The Telegram message is sent by a Node server on the computer the board is plugged into, so it needs that computer running and online.
 
 <img width="1600" height="900" alt="Dashboard" src="https://github.com/user-attachments/assets/7e5fb7e7-30a0-49a3-abae-ff24a9b5d75b" />
 
@@ -16,10 +16,10 @@ The local alarm path is entirely GPIO-driven and has **no dependency on WiFi** �
 - Continuous LPG concentration sensing with the MQ-6 gas sensor
 - Local audible alarm (buzzer, two distinct tones) and visual alarm (RGB LED), both WiFi-independent
 - Manual-override button to mute the buzzer during an alarm
-- SMS alert to an OTP-linked mobile number, carrying the alarm severity
-- TLS-pinned HTTPS to the SMS gateway, with the API key verified as a real `Authorization` header
+- Telegram alert to your phone when a leak opens, and a second one if the same leak escalates to DANGER
+- A local dashboard (live readings, incident history) served by the same Node server
 
-> **Not implemented:** Supabase cloud logging, a real-time sync dashboard, and sensor/alert history storage are described in earlier drafts of this document but **do not exist in the firmware**. There is no code for them. See *Known gaps* below.
+> **Not implemented:** Supabase cloud logging. Earlier drafts described it and no code exists for it. The local dashboard and Postgres incident history live in `Dashboard/`; see [HOW_TO_RUN.md](HOW_TO_RUN.md).
 
 ## System Architecture
 
@@ -28,7 +28,7 @@ The system is organized into four layers:
 1. **Sensing Layer** — MQ-6 gas sensor (via a 10 kΩ load resistor) continuously samples air near the cylinder/stove; a push button provides a second local input.
 2. **Control / Processing Layer** — ESP32 runs the embedded-C firmware: ADC sampling → threshold comparison → GPIO control → WiFi. Powered through a regulated 9 V/USB supply with a stabilizing capacitor on the rail.
 3. **Local Output Layer** (WiFi-independent) — buzzer and RGB LED driven directly by GPIO, so the physical alarm fires regardless of network state.
-4. **Remote Layer** (over WiFi) — SMS via the CircuitDigest Cloud gateway.
+4. **Remote Layer** (USB serial, then internet) — a Node server on a computer reads the board's serial output and sends the Telegram alert.
 
 Detection → local alarm (layers 1–3) forms a closed loop that never touches the network; the remote layer is an add-on, not a dependency.
 
@@ -85,12 +85,12 @@ The firmware (`GLD.ino`, Arduino C++) runs a loop that:
 3. **State machine** — three states drive all outputs, latched so the state
    persists between samples. Transitions use **hysteresis**, so a reading that
    oscillates around a threshold cannot make the alarm flicker:
-   - **SAFE** — LED green, buzzer off, alarm un-muted, SMS re-armed
+   - **SAFE** — LED green, buzzer off, alarm un-muted, remote alert re-armed
    - **WARNING** — entered at **≥ 500**, left below **420**. LED amber (red +
      green), buzzer beeps at **1000 Hz**, toggling every 300 ms
    - **DANGER** — entered at **≥ 800**, left below **700**. LED **solid red**,
-     buzzer beeps at **2000 Hz**, toggling every 150 ms, and one SMS is sent
-     per leak event
+     buzzer beeps at **2000 Hz**, toggling every 150 ms. The Node server
+     sends a DANGER message
 
    The clear thresholds sit 80–100 counts below the trip thresholds, which is
    the gap that prevents chatter. A jump from SAFE straight to DANGER (e.g. gas
@@ -100,27 +100,22 @@ The firmware (`GLD.ino`, Arduino C++) runs a loop that:
 4. **Manual override** — the button toggles the buzzer mute whenever the state is
    not SAFE. Muting does **not** clear the alarm state; the LED keeps showing the
    real condition, and the mute is released automatically on returning to SAFE.
-5. **SMS** — at most `SMS_MAX_ATTEMPTS_PER_EVENT` (3) messages per leak event,
-   not one per iteration. The first fires immediately; further attempts are spaced
-   `SMS_RETRY_INTERVAL_MS` (15 min) apart. The cap exists because the gateway
-   allows only **15 SMS/day** — an uncapped 60 s retry loop exhausts the day's
-   quota in about a quarter of an hour, and remote alerting then dies silently
-   until midnight. The counter re-arms only when the state returns to SAFE. If the
-   network is down no attempt is consumed at all, and the "wifi offline" notice is
-   rate-limited to once every 5 s, so the alert goes out as soon as connectivity
-   returns rather than waiting out the retry window.
+5. **Remote alert** — the firmware sends no messages itself. It prints `TELEM`
+   lines over USB serial and the Node server decides when to alert: one message
+   when a leak opens (WARNING at **500**), and one more if that same leak reaches
+   DANGER (**800**). Nothing is sent when the leak clears, and a server restart
+   mid-leak does not re-send. The alert rules live in
+   `Dashboard/server/src/alertPolicy.js` and are covered by tests.
 6. **Warm-up** — for the first `SENSOR_WARMUP_MS` (20 s) after boot the firmware
    **ignores gas readings entirely** and blinks the blue LED to show it is
    calibrating. This prevents a false alarm from an unstabilised MQ-6. It has
    no effect on the timer starting from the end of `setup()`.
 
-### Alarm behaviour under a blocking network call
+### The alarm does not wait on the network
 
-The SMS request is synchronous and can take several seconds. Immediately before
-the request the firmware re-asserts a continuous tone on the buzzer
-(`holdToneDuringSms()`), so the alarm keeps sounding through the network call
-instead of dropping into the silent half of its beep cycle. The beep cadence
-resumes normally once the request returns.
+The firmware makes no network calls for alerting, so the buzzer cadence and the
+mute button are never blocked. If the Telegram send is slow, only the Node server
+waits.
 
 ### Things the firmware still does *not* do
 
@@ -135,14 +130,9 @@ resumes normally once the request returns.
 1. Wire the hardware per the pin map above.
 2. Install **Arduino IDE 2.x**.
 3. Add the ESP32 board support: *Tools → Board → Boards Manager*, search for **esp32**, install **“esp32 by Espressif Systems”** (v3.x).
-4. Create a free account at **circuitdigest.cloud**, then:
-   - **Account → API Key** — generate a key (format `cd_…`, 100 SMS/month)
-   - **SMS → Link Phone Number** — add your number and verify it by OTP. The API
-     **only sends to numbers linked this way**; an unlinked recipient is rejected.
-   - **SMS → Templates** — note the ID of a template. **108** is the match for
-     this project: *"The {#var#} is currently {#var#}. Please ensure safety."*
-   - Use **Run Test** on the `/sms` page to confirm the whole chain works before
-     flashing anything. It costs one of your 15 daily messages.
+4. Set up the Telegram bot and the Node server by following
+   [HOW_TO_RUN.md](HOW_TO_RUN.md). The firmware does not need any Telegram
+   credentials.
 5. Create your local credentials file by copying `secrets.h.example` to `secrets.h` and filling it in:
    ```powershell
    Copy-Item secrets.h.example secrets.h
@@ -150,9 +140,6 @@ resumes normally once the request returns.
    ```
    `secrets.h` is git-ignored and must not be committed. It needs:
    - `WIFI_SSID` / `WIFI_PASSWORD` — the network the ESP32 joins
-   - `CD_API_KEY` — the `cd_…` key from the dashboard
-   - `CD_TEMPLATE_ID` — the template ID you chose (`108`)
-   - `CD_MOBILE` — `91` followed by the 10-digit linked number, **no `+`**, no spaces
 6. Open the sketch: *File → Open…* and select **`GLD.ino`**.
 
    > The sketch folder name and the `.ino` file name must match, so the folder must be `GLD` and the file `GLD.ino`. If you rename one, rename the other. This is a hard requirement of the Arduino build system, not a convention.
@@ -200,15 +187,13 @@ MQ-6 units vary — calibrate before deployment:
 
 - Boot: blue LED blinks for 20 s, then the LED shows green in clean air
 - Green → amber → red transition, buzzer tone change from 1000 Hz to 2000 Hz
-- Exactly one SMS on a brief, ventilated gas exposure, reading
-  *"The LPG gas level is currently DANGER. Please ensure safety."*
-- **The SMS carries no timestamp.** Template variables are capped at 30 characters
-  and reject special characters, so there is nowhere to put a clock time. Correlate
-  against the serial log instead — this is a gateway limitation, not a bug.
+- With the server running, a brief ventilated gas exposure sends one WARNING
+  message at 500, and one DANGER message if it passes 800
+- Each message shows the gas level, the time, and a safety instruction
 - Pressing the button mutes the buzzer during an active alarm without clearing
   the LED state; pressing again unmutes
 - Buzzer returns on its own once the reading drops below `WARNING_CLEAR_THRESHOLD`
-- Green state and SMS re-arm after the gas clears
+- Green state and the remote alert re-arm after the gas clears
 
 ## Known gaps
 
@@ -216,24 +201,23 @@ Honest list of what is missing or weak, so it is not mistaken for working:
 
 | Gap | Impact |
 |---|---|
-| Supabase logging / dashboard | **Not implemented at all**, despite earlier docs |
+| Supabase cloud logging | Not implemented. Local Postgres history exists in `Dashboard/` |
 | Red LED never blinks | No visual urgency escalation in DANGER |
 | Thresholds uncalibrated | Defaults are placeholders; see Calibration |
-| SMS send is synchronous | Blocks the loop for up to ~5 s; mitigated by holding a continuous tone, but the button and LED freeze for that duration |
 | Thresholds are absolute ADC counts | No compensation for sensor drift or ambient temperature |
-| SMS quota is 15/day | Five sustained leak events exhaust the daily allowance. The board cannot see the counter, so exhaustion fails silently |
-| SMS retry is flat and capped at 3 | A gateway outage burns 3 messages per event then stops trying; no exponential backoff, no give-up signal |
-| No timestamp in the SMS | Template variables cannot carry one; correlate against the serial log |
-| Recipients must be OTP-linked | Only numbers pre-registered to the cloud account can be alerted — by design, but it means you cannot text a neighbour who isn't linked |
+| Alerts need a computer | The Node server must be running, online, and connected to the board by USB. The buzzer and LED work without it |
+| Telegram, not SMS | The phone needs the Telegram app and a data connection. A basic phone gets nothing |
+| A failed send is not retried | If Telegram is unreachable at the moment a leak opens, that message is lost. The server logs the failure |
+| One chat only | `TELEGRAM_CHAT_ID` is a single recipient |
 | Green LED on GPIO2 | Strapping pin; see the caution in the pin map |
 | Calibrated threshold values | Defaults are placeholders |
 
 ## Project Scope
 
-**Included:** continuous MQ-6 sensing, GPIO-driven local alarm with a two-stage tone, SMS alerting, TLS-pinned transport.
+**Included:** continuous MQ-6 sensing, GPIO-driven local alarm with a two-stage tone, Telegram alerting through a Node server, a local dashboard with incident history.
 
-**Not included (future work):** automatic regulator/electricity shutoff, ventilation control, cylinder-weight monitoring, battery backup for mains cuts, cloud logging and dashboards, and field validation across multiple real kitchen installations (this cycle is lab/prototype testing only).
+**Not included (future work):** automatic regulator/electricity shutoff, ventilation control, cylinder-weight monitoring, battery backup for mains cuts, cloud logging, and field validation across multiple real kitchen installations (this cycle is lab/prototype testing only).
 
 ## Security
 
-Credential handling, the TLS root pinning, and the gateway's template/variable constraints are documented in [SECURITY.md](SECURITY.md).
+How the bot token and `.env` are handled, and what the dashboard does and does not protect, is in [SECURITY.md](SECURITY.md).

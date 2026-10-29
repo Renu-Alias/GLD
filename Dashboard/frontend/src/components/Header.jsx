@@ -12,7 +12,7 @@ const IST = { timeZone: 'Asia/Kolkata' };
  *
  * The badge deliberately reports the USB serial link rather than a WiFi link:
  * the dashboard's data path is USB, and the ESP32's WiFi state is a separate
- * concern (it only carries the SMS alert).
+ * concern (the firmware no longer sends alerts over WiFi).
  */
 const LINK = {
   live: { label: 'Sensor Live', Icon: Usb, color: 'var(--c-safe)', bg: 'var(--c-safe-bg)', border: 'var(--c-safe-border)' },
