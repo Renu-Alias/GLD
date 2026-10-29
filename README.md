@@ -8,7 +8,8 @@ LPG is colourless and essentially odourless — the safety odorant added to it o
 
 The local alarm path is entirely GPIO-driven and has **no dependency on WiFi** — it keeps working even during a network or connectivity outage. Remote notification rides on top of that as a best-effort layer.
 
-<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/3f466ebb-71d7-42e0-9617-ce932614ab66" />
+<img width="1600" height="900" alt="Dashboard" src="https://github.com/user-attachments/assets/7e5fb7e7-30a0-49a3-abae-ff24a9b5d75b" />
+
 
 ## Features
 
