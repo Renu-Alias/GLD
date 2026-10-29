@@ -40,7 +40,7 @@ This document explains key terms you'll see on the Gas Leak Detection Dashboard:
 
 ## Related Files
 
-- `gld.ino` - Firmware reading ADC on GPIO33 and emitting TELEM
+- `GLD.ino` - Firmware reading ADC on GPIO33 and emitting TELEM
 - `Dashboard/server/src/serialSource.js` - Serial port handling
 - `Dashboard/server/src/telemetry.js` - TELEM parsing
 - `Dashboard/server/src/session.js` - Tracks `sampleCount` and incidents

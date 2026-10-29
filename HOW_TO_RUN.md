@@ -23,7 +23,7 @@ cd GLD
 ## 2. Flash the board
 
 1. Copy `secrets.h.example` to `secrets.h` and fill in your WiFi name and password. `secrets.h` is gitignored.
-2. Open `gld.ino` in the Arduino IDE with the ESP32 board package installed.
+2. Open `GLD.ino` in the Arduino IDE with the ESP32 board package installed.
 3. Pick your ESP32 board and port, then upload.
 
 Skip this step if the board already runs the firmware.
