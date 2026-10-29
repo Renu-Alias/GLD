@@ -1,6 +1,12 @@
 secrets.h
+
+# Credentials (Telegram bot token, DATABASE_URL). Patterns without a slash match at any
+# depth. `env` and `*.env` catch the dotless filename an editor or a typo produces.
 .env
-Dashboard/server/.env
+.env.*
+!.env.example
+*.env
+env
 
 # Installed by npm, not source. serialport also ships platform-specific native
 # binaries that must never be committed.
@@ -8,3 +14,7 @@ node_modules/
 
 # Vite build output for the frontend is intentionally committed, so the bridge can
 # serve the dashboard without a build step. Do not add dist/ here.
+
+# Local sensor log written by the server at runtime (90 MB and growing).
+Dashboard/server/readings.db
+Dashboard/server/readings.db-journal

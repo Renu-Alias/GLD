@@ -1,7 +1,6 @@
 #pragma once
 
-// SMS is now handled by the Node.js bridge using Twilio.
-// The ESP32 no longer sends SMS directly. No CA bundle required for CircuitDigest.  "VQQLExtHbG9iYWxTaWduIEVDQyBSb290IENBIC0gUjQxEzARBgNVBAoTCkdsb2Jh\n" \
+// Unused: alerts are sent by the Node.js bridge (Telegram), so the ESP32 makes no TLS calls.  "VQQLExtHbG9iYWxTaWduIEVDQyBSb290IENBIC0gUjQxEzARBgNVBAoTCkdsb2Jh\n" \
   "bFNpZ24xEzARBgNVBAMTCkdsb2JhbFNpZ24wHhcNMTIxMTEzMDAwMDAwWhcNMzgw\n" \
   "MTE5MDMxNDA3WjBQMSQwIgYDVQQLExtHbG9iYWxTaWduIEVDQyBSb290IENBIC0g\n" \
   "UjQxEzARBgNVBAoTCkdsb2JhbFNpZ24xEzARBgNVBAMTCkdsb2JhbFNpZ24wWTAT\n" \

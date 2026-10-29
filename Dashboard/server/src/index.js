@@ -9,7 +9,8 @@ import { SseHub } from './sse.js';
 import { createRequestHandler } from './http.js';
 import { ReadingDB } from './db.js';
 import { PostgresDB } from './pgdb.js';
-import { sendLeakSms } from './sms.js';
+import { sendLeakAlert } from './telegram.js';
+import { nextAlert } from './alertPolicy.js';
 
 const log = (...args) => console.log(...args);
 const warn = (...args) => console.warn(...args);
@@ -28,6 +29,9 @@ const session = new Session({
 });
 
 const hub = new SseHub();
+
+// Severity of the open incident on the previous reading, for nextAlert().
+let lastIncidentSeverity = null;
 
 let lastLink = null;
 
@@ -108,6 +112,16 @@ function handleLine(line) {
   }
 
   const { event, incident } = session.ingest(parsed);
+
+  // The alert rides on the session's own incident state, so it fires with or
+  // without Postgres and is not suppressed by an unrelated open history row.
+  // One message when a leak opens, one more if it escalates to critical.
+  const alert = nextAlert(lastIncidentSeverity, { event, incident });
+  lastIncidentSeverity = alert.last;
+  if (alert.send) {
+    sendLeakAlert({ severity: incident.severity, peakValue: incident.peakValue })
+      .catch((e) => warn('[alert] err', e?.message));
+  }
 
   // Save reading to database - only real sensor readings (SQLite for trend)
   try {
@@ -198,7 +212,7 @@ function handleLine(line) {
               }));
               hub.broadcast('incident', { event: 'incident-open', incident: session.openIncident });
             } catch {}
-            // No SMS for this new critical row as per requirement
+            // No alert for this new critical row as per requirement
             return;
           }
         }
@@ -235,9 +249,6 @@ function handleLine(line) {
                 }));
                 hub.broadcast('incident', { event, incident });
               } catch {}
-              // Send SMS via Twilio on new leak
-              // Send SMS for new incident (when >500)
-              sendLeakSms({ severity: incident.severity, peakValue: incident.peakValue }).catch((e) => console.error('[sms] err', e.message));
             } else {
               // Already have an active incident, just reload list
               try {

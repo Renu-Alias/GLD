@@ -17,7 +17,6 @@
   "dependencies": {
     "dotenv": "^18.0.9",
     "pg": "^8.23.1",
-    "serialport": "^13.0.0",
-    "twilio": "^6.2.0"
+    "serialport": "^13.0.0"
   }
 }
